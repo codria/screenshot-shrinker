@@ -1,158 +1,201 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/settingsRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     tools:context=".SettingsActivity">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <ImageView
+                android:id="@+id/previewImage"
+                android:layout_width="match_parent"
+                android:layout_height="250dp"
+                android:adjustViewBounds="true"
+                android:background="?attr/colorSurfaceContainer"
+                android:contentDescription="@string/result_image_description"
+                android:scaleType="fitCenter" />
+
+            <LinearLayout
+                android:id="@+id/concatRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_image_row"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_concat_direction"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <RadioGroup
+                    android:id="@+id/directionRadioGroup"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/directionVertical"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="@string/direction_vertical" />
+
+                    <RadioButton
+                        android:id="@+id/directionHorizontal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="@string/direction_horizontal" />
+                </RadioGroup>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_image_row"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_resize"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/resizeDropdownLayout"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+
+                    <AutoCompleteTextView
+                        android:id="@+id/resizeDropdown"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="none" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <LinearLayout
+                    android:id="@+id/customRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/customInputLayout"
+                        android:layout_width="120dp"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/hint_custom_percent">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/customInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        android:id="@+id/customResolutionText"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_image_row"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:id="@+id/qualityLabelText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_quality"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/qualitySlider"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:stepSize="1"
+                        android:value="80"
+                        android:valueFrom="1"
+                        android:valueTo="100" />
+
+                    <TextView
+                        android:id="@+id/qualityValueText"
+                        android:layout_width="56dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="80%"
+                        android:textAppearance="?attr/textAppearanceBodyLarge" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonBackToMain"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="@string/label_resize"
-            android:textAppearance="?attr/textAppearanceTitleMedium" />
-
-        <RadioGroup
-            android:id="@+id/resizeRadioGroup"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/resize100"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:checked="true" />
-
-            <RadioButton
-                android:id="@+id/resize50"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <RadioButton
-                android:id="@+id/resize40"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <RadioButton
-                android:id="@+id/resize30"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <RadioButton
-                android:id="@+id/resize20"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <RadioButton
-                android:id="@+id/resize1080"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <RadioButton
-                android:id="@+id/resize768"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <RadioButton
-                android:id="@+id/resizeCustom"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/resize_custom" />
-        </RadioGroup>
-
-        <LinearLayout
-            android:id="@+id/customRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/customInputLayout"
-                android:layout_width="120dp"
-                android:layout_height="wrap_content"
-                android:hint="@string/hint_custom_percent">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/customInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <TextView
-                android:id="@+id/customResolutionText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_weight="1"
-                android:textAppearance="?attr/textAppearanceBodyMedium" />
-        </LinearLayout>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="@string/label_quality"
-            android:textAppearance="?attr/textAppearanceTitleMedium" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <com.google.android.material.slider.Slider
-                android:id="@+id/qualitySlider"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:stepSize="1"
-                android:value="80"
-                android:valueFrom="1"
-                android:valueTo="100" />
-
-            <TextView
-                android:id="@+id/qualityValueText"
-                android:layout_width="48dp"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:text="80"
-                android:textAppearance="?attr/textAppearanceBodyLarge" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/estimateText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:text="@string/action_back_screen" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/buttonSave"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
             android:text="@string/action_save" />
-
-        <TextView
-            android:id="@+id/textStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:gravity="center"
-            android:text="" />
-
     </LinearLayout>
-</ScrollView>
+
+</LinearLayout>

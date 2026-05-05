@@ -3,16 +3,17 @@ package com.codria.screenshotshrinker
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Rect
-import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.text.Spannable
-import android.text.SpannableStringBuilder
-import android.text.style.StyleSpan
+import android.provider.OpenableColumns
 import android.view.MotionEvent
+import android.view.View
 import android.view.inputmethod.InputMethodManager
-import android.widget.RadioButton
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
@@ -21,6 +22,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
+import com.codria.screenshotshrinker.util.ImageConcatenator
 import com.codria.screenshotshrinker.util.ImageLoader
 import com.codria.screenshotshrinker.util.ImageResizer
 import com.codria.screenshotshrinker.util.ImageSaver
@@ -41,23 +43,38 @@ import java.util.Locale
 
 class SettingsActivity : AppCompatActivity() {
 
-    private data class PresetData(val percent: Int, val targetW: Int, val resultH: Int)
+    private data class PresetData(
+        val percent: Int,
+        val targetW: Int,
+        val resultH: Int,
+        val isFixedWidth: Boolean,
+    )
 
-    private lateinit var sourceUri: Uri
-    private var sourceW: Int = 0
-    private var sourceH: Int = 0
-    private var loadedBitmap: Bitmap? = null
+    private lateinit var sourceUris: List<Uri>
+    private var loadedBitmaps: List<Bitmap>? = null
+    private var previewBitmap: Bitmap? = null
+    private var totalSourceBytes: Long = 0L
+    private var outputW: Int = 0
+    private var outputH: Int = 0
     private var estimateJob: Job? = null
+    private var previewJob: Job? = null
 
-    private lateinit var resizeRadioGroup: RadioGroup
+    private var presetItems: List<PresetData> = emptyList()
+    private var selectedPreset: PresetData? = null
+    private var customSelected: Boolean = false
+
+    private lateinit var concatRow: LinearLayout
+    private lateinit var directionRadioGroup: RadioGroup
+    private lateinit var previewImage: ImageView
+    private lateinit var resizeDropdown: AutoCompleteTextView
     private lateinit var customInputLayout: TextInputLayout
     private lateinit var customInput: TextInputEditText
     private lateinit var customResolutionText: TextView
-    private lateinit var estimateText: TextView
+    private lateinit var qualityLabelText: TextView
     private lateinit var qualitySlider: Slider
     private lateinit var qualityValueText: TextView
     private lateinit var saveButton: MaterialButton
-    private lateinit var statusText: TextView
+    private lateinit var backButton: MaterialButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,58 +87,89 @@ class SettingsActivity : AppCompatActivity() {
             insets
         }
 
-        val incomingUri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(EXTRA_IMAGE_URI, Uri::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_IMAGE_URI)
-        }
-        if (incomingUri == null) {
+        val incomingUris: ArrayList<Uri>? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableArrayListExtra(EXTRA_IMAGE_URIS, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra(EXTRA_IMAGE_URIS)
+            }
+        if (incomingUris.isNullOrEmpty()) {
             finish()
             return
         }
-        sourceUri = incomingUri
+        sourceUris = incomingUris.toList()
 
-        resizeRadioGroup = findViewById(R.id.resizeRadioGroup)
+        concatRow = findViewById(R.id.concatRow)
+        directionRadioGroup = findViewById(R.id.directionRadioGroup)
+        previewImage = findViewById(R.id.previewImage)
+        resizeDropdown = findViewById(R.id.resizeDropdown)
         customInputLayout = findViewById(R.id.customInputLayout)
         customInput = findViewById(R.id.customInput)
         customResolutionText = findViewById(R.id.customResolutionText)
-        estimateText = findViewById(R.id.estimateText)
+        qualityLabelText = findViewById(R.id.qualityLabelText)
         qualitySlider = findViewById(R.id.qualitySlider)
         qualityValueText = findViewById(R.id.qualityValueText)
         saveButton = findViewById(R.id.buttonSave)
-        statusText = findViewById(R.id.textStatus)
+        backButton = findViewById(R.id.buttonBackToMain)
+
+        concatRow.visibility = if (sourceUris.size >= 2) View.VISIBLE else View.GONE
+
+        directionRadioGroup.setOnCheckedChangeListener { _, _ ->
+            recomputeOutputDimsAndRender()
+            updatePreview()
+            scheduleEstimate()
+        }
 
         qualitySlider.addOnChangeListener { _, value, _ ->
-            qualityValueText.text = value.toInt().toString()
+            qualityValueText.text = "${value.toInt()}%"
             scheduleEstimate()
         }
 
         customInput.addTextChangedListener {
             customInputLayout.error = null
             updateCustomResolutionText()
-            if (resizeRadioGroup.checkedRadioButtonId != R.id.resizeCustom) {
-                // 入力したら自動でカスタムを選択（onCheckedChange内でscheduleEstimateが呼ばれる）
-                resizeRadioGroup.check(R.id.resizeCustom)
-            } else {
-                scheduleEstimate()
+            if (!customSelected) {
+                customSelected = true
+                selectedPreset = null
+                resizeDropdown.setText(getString(R.string.resize_custom), false)
             }
+            scheduleEstimate()
+        }
+
+        resizeDropdown.setOnItemClickListener { _, _, position, _ ->
+            if (position < presetItems.size) {
+                selectedPreset = presetItems[position]
+                customSelected = false
+                customInputLayout.error = null
+            } else {
+                // 「カスタム」項目選択
+                selectedPreset = null
+                customSelected = true
+                // フォーカスとIMEを起動して入力を促す
+                customInput.requestFocus()
+                getSystemService(InputMethodManager::class.java)
+                    ?.showSoftInput(customInput, InputMethodManager.SHOW_IMPLICIT)
+            }
+            scheduleEstimate()
         }
 
         saveButton.setOnClickListener { onSaveClicked() }
+        backButton.setOnClickListener { finish() }
 
-        loadBitmapAndSetup()
+        loadBitmapsAndSetup()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         estimateJob?.cancel()
-        loadedBitmap?.recycle()
-        loadedBitmap = null
+        previewJob?.cancel()
+        recyclePreview()
+        loadedBitmaps?.forEach { it.recycle() }
+        loadedBitmaps = null
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        // カスタム入力欄の外をタップしたらフォーカスを外してキーボードを閉じる
         if (ev.action == MotionEvent.ACTION_DOWN && customInput.hasFocus()) {
             val rect = Rect()
             customInputLayout.getGlobalVisibleRect(rect)
@@ -134,22 +182,21 @@ class SettingsActivity : AppCompatActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    private fun loadBitmapAndSetup() {
-        estimateText.setText(R.string.estimate_loading)
+    private fun loadBitmapsAndSetup() {
+        updateQualityLabel(getString(R.string.estimate_loading))
         lifecycleScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    ImageLoader.loadBitmap(this@SettingsActivity, sourceUri)
+                    val totalBytes = sourceUris.sumOf { queryFileSize(it) }
+                    val bitmaps = sourceUris.map { ImageLoader.loadBitmap(this@SettingsActivity, it) }
+                    bitmaps to totalBytes
                 }
             }
-            result.onSuccess { bmp ->
-                loadedBitmap = bmp
-                sourceW = bmp.width
-                sourceH = bmp.height
-                renderRadios()
-                resizeRadioGroup.setOnCheckedChangeListener { _, _ ->
-                    scheduleEstimate()
-                }
+            result.onSuccess { (bitmaps, totalBytes) ->
+                loadedBitmaps = bitmaps
+                totalSourceBytes = totalBytes
+                recomputeOutputDimsAndRender()
+                updatePreview()
                 scheduleEstimate()
             }.onFailure { t ->
                 val reason = t.message ?: t.javaClass.simpleName
@@ -163,100 +210,186 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderRadios() {
-        val percentRbs = PERCENT_PRESET_IDS.associate { (_, id) -> id to findViewById<RadioButton>(id) }
-        val fixedWidthRbs = FIXED_WIDTH_PRESET_IDS.associate { (_, id) -> id to findViewById<RadioButton>(id) }
-        val customRb = findViewById<RadioButton>(R.id.resizeCustom)
+    private fun queryFileSize(uri: Uri): Long {
+        return contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.SIZE),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (idx >= 0) cursor.getLong(idx) else 0L
+            } else 0L
+        } ?: 0L
+    }
 
-        val items = mutableListOf<Pair<RadioButton, PresetData>>()
+    private fun updateQualityLabel(estimateStr: String) {
+        val base = getString(R.string.label_quality)
+        qualityLabelText.text = if (totalSourceBytes > 0) {
+            "$base (${formatFileSize(totalSourceBytes)} → $estimateStr)"
+        } else {
+            base
+        }
+    }
 
-        for ((pct, id) in PERCENT_PRESET_IDS) {
-            val rb = percentRbs.getValue(id)
-            val w = (sourceW * pct / 100).coerceAtLeast(1)
-            val h = (sourceH * pct / 100).coerceAtLeast(1)
-            val data = PresetData(pct, w, h)
-            rb.text = buildPresetLabel(pct, w, h, bold = false)
-            rb.tag = data
-            items += rb to data
+    private fun currentDirection(): ImageConcatenator.Direction =
+        if (directionRadioGroup.checkedRadioButtonId == R.id.directionHorizontal) {
+            ImageConcatenator.Direction.HORIZONTAL
+        } else {
+            ImageConcatenator.Direction.VERTICAL
         }
 
-        val standardResultWs = PERCENT_PRESET_IDS.map { (pct, _) -> sourceW * pct / 100 }.toSet()
-        for ((px, id) in FIXED_WIDTH_PRESET_IDS) {
-            val rb = fixedWidthRbs.getValue(id)
-            if (px >= sourceW) continue
+    private fun recomputeOutputDimsAndRender() {
+        val bitmaps = loadedBitmaps ?: return
+        val (w, h) = ImageConcatenator.computeOutputSize(
+            bitmaps.map { it.width to it.height },
+            currentDirection(),
+        )
+        outputW = w
+        outputH = h
+        rebuildPresetList()
+        renderResizeDropdown()
+        updateCustomResolutionText()
+    }
+
+    private fun rebuildPresetList() {
+        val items = mutableListOf<PresetData>()
+        for (pct in PERCENT_PRESETS) {
+            val w = (outputW * pct / 100).coerceAtLeast(1)
+            val h = (outputH * pct / 100).coerceAtLeast(1)
+            items += PresetData(pct, w, h, isFixedWidth = false)
+        }
+        val standardResultWs = PERCENT_PRESETS.map { outputW * it / 100 }.toSet()
+        for (px in FIXED_WIDTHS) {
+            if (px >= outputW) continue
             if (px in standardResultWs) continue
-            val pct = px * 100 / sourceW
-            val resultH = (sourceH.toLong() * px / sourceW).toInt().coerceAtLeast(1)
-            val data = PresetData(pct, px, resultH)
-            rb.text = buildPresetLabel(pct, px, resultH, bold = true)
-            rb.tag = data
-            items += rb to data
+            val pct = px * 100 / outputW
+            val resultH = (outputH.toLong() * px / outputW).toInt().coerceAtLeast(1)
+            items += PresetData(pct, px, resultH, isFixedWidth = true)
         }
-
-        items.sortByDescending { it.second.percent }
-
-        resizeRadioGroup.removeAllViews()
-        items.forEach { (rb, _) -> resizeRadioGroup.addView(rb) }
-        resizeRadioGroup.addView(customRb)
-
-        items.firstOrNull()?.let { resizeRadioGroup.check(it.first.id) }
+        items.sortByDescending { it.percent }
+        presetItems = items
     }
 
-    private fun buildPresetLabel(percent: Int, w: Int, h: Int, bold: Boolean): CharSequence {
-        val text = "$percent% (${w}×${h}px)"
-        if (!bold) return text
-        val sb = SpannableStringBuilder(text)
-        sb.setSpan(StyleSpan(Typeface.BOLD), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-        return sb
+    private fun renderResizeDropdown() {
+        val labels = presetItems.map { formatPresetLabel(it) } + getString(R.string.resize_custom)
+        val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels)
+        resizeDropdown.setAdapter(adapter)
+
+        // 既存選択を維持。一致するものがなければ先頭(100%)を選択
+        when {
+            customSelected -> {
+                resizeDropdown.setText(getString(R.string.resize_custom), false)
+            }
+            selectedPreset != null -> {
+                val match = presetItems.firstOrNull { it.percent == selectedPreset!!.percent && it.isFixedWidth == selectedPreset!!.isFixedWidth }
+                if (match != null) {
+                    selectedPreset = match
+                    resizeDropdown.setText(formatPresetLabel(match), false)
+                } else {
+                    val first = presetItems.firstOrNull()
+                    selectedPreset = first
+                    if (first != null) resizeDropdown.setText(formatPresetLabel(first), false)
+                }
+            }
+            else -> {
+                val first = presetItems.firstOrNull()
+                selectedPreset = first
+                if (first != null) resizeDropdown.setText(formatPresetLabel(first), false)
+            }
+        }
     }
+
+    private fun formatPresetLabel(p: PresetData): String =
+        "${p.percent}% (${p.targetW}×${p.resultH}px)"
 
     private fun updateCustomResolutionText() {
         val pct = customInput.text?.toString()?.trim()?.toIntOrNull()
-        if (pct == null || pct !in 1..100) {
+        if (pct == null || pct !in 1..100 || outputW == 0) {
             customResolutionText.text = ""
             return
         }
-        val w = (sourceW * pct / 100).coerceAtLeast(1)
-        val h = (sourceH * pct / 100).coerceAtLeast(1)
+        val w = (outputW * pct / 100).coerceAtLeast(1)
+        val h = (outputH * pct / 100).coerceAtLeast(1)
         customResolutionText.text = "${w}×${h}px"
+    }
+
+    private fun updatePreview() {
+        val sources = loadedBitmaps ?: return
+        previewJob?.cancel()
+        previewJob = lifecycleScope.launch {
+            val newPreview = withContext(Dispatchers.IO) {
+                runCatching {
+                    val combined = ImageConcatenator.concat(sources, currentDirection())
+                    val previewMaxW = 800
+                    val resized = if (combined.width > previewMaxW) {
+                        ImageResizer.resizeToWidth(combined, previewMaxW)
+                    } else {
+                        combined
+                    }
+                    if (resized !== combined && combined !in sources) combined.recycle()
+                    resized
+                }.getOrNull()
+            }
+            if (newPreview != null) {
+                val old = previewBitmap
+                previewBitmap = newPreview
+                previewImage.setImageBitmap(newPreview)
+                if (old != null && old !== newPreview && old !in sources) {
+                    old.recycle()
+                }
+            }
+        }
+    }
+
+    private fun recyclePreview() {
+        val sources = loadedBitmaps ?: emptyList()
+        val pb = previewBitmap
+        if (pb != null && pb !in sources) pb.recycle()
+        previewBitmap = null
     }
 
     private fun scheduleEstimate() {
         estimateJob?.cancel()
-        val src = loadedBitmap
-        if (src == null) {
-            estimateText.setText(R.string.estimate_loading)
+        val sources = loadedBitmaps
+        if (sources == null) {
+            updateQualityLabel(getString(R.string.estimate_loading))
             return
         }
-        estimateText.setText(R.string.estimate_loading)
+        updateQualityLabel(getString(R.string.estimate_loading))
         estimateJob = lifecycleScope.launch {
             delay(DEBOUNCE_MS)
             val targetW = resolveTargetWidthQuiet()
             if (targetW == null) {
-                estimateText.setText(R.string.estimate_unavailable)
+                updateQualityLabel(getString(R.string.estimate_unavailable))
                 return@launch
             }
             val q = qualitySlider.value.toInt()
+            val direction = currentDirection()
             val bytes = runCatching {
                 withContext(Dispatchers.IO) {
-                    val resized = ImageResizer.resizeToWidth(src, targetW)
+                    val combined = ImageConcatenator.concat(sources, direction)
+                    val resized = ImageResizer.resizeToWidth(combined, targetW)
                     val baos = ByteArrayOutputStream()
                     resized.compress(Bitmap.CompressFormat.JPEG, q, baos)
-                    if (resized !== src) resized.recycle()
+                    if (resized !== combined) resized.recycle()
+                    if (combined !in sources) combined.recycle()
                     baos.size().toLong()
                 }
             }
             bytes.onSuccess { b ->
-                estimateText.text = getString(R.string.estimate_size, formatFileSize(b))
+                updateQualityLabel(formatFileSize(b))
             }.onFailure {
-                estimateText.setText(R.string.estimate_unavailable)
+                updateQualityLabel(getString(R.string.estimate_unavailable))
             }
         }
     }
 
     private fun onSaveClicked() {
-        val src = loadedBitmap
-        if (src == null) {
+        val sources = loadedBitmaps
+        if (sources == null) {
             Snackbar.make(
                 findViewById(R.id.settingsRoot),
                 R.string.estimate_loading,
@@ -266,29 +399,35 @@ class SettingsActivity : AppCompatActivity() {
         }
         val targetW = resolveTargetWidth() ?: return
         val quality = qualitySlider.value.toInt()
+        val direction = currentDirection()
+        val isMulti = sources.size >= 2
 
         saveButton.isEnabled = false
-        statusText.setText(R.string.status_processing)
 
         lifecycleScope.launch {
             val outcome = runCatching {
                 withContext(Dispatchers.IO) {
-                    val resized = ImageResizer.resizeToWidth(src, targetW)
+                    val combined = ImageConcatenator.concat(sources, direction)
+                    val resized = ImageResizer.resizeToWidth(combined, targetW)
                     val timestamp = SimpleDateFormat("yyMMdd_HHmmss", Locale.US).format(Date())
-                    val outputName = "shrunk_$timestamp.jpg"
+                    val outputName = if (isMulti) {
+                        "concat_$timestamp.jpg"
+                    } else {
+                        "shrunk_$timestamp.jpg"
+                    }
                     val saved = ImageSaver.saveJpeg(
                         this@SettingsActivity,
                         resized,
                         outputName,
                         quality,
                     )
-                    if (resized !== src) resized.recycle()
+                    if (resized !== combined) resized.recycle()
+                    if (combined !in sources) combined.recycle()
                     saved
                 }
             }
 
             outcome.onSuccess { saved ->
-                statusText.text = ""
                 val intent = Intent(this@SettingsActivity, ResultActivity::class.java).apply {
                     putExtra(ResultActivity.EXTRA_RESULT_URI, saved.uri)
                     putExtra(ResultActivity.EXTRA_DISPLAY_NAME, saved.displayName)
@@ -300,7 +439,6 @@ class SettingsActivity : AppCompatActivity() {
             }.onFailure { t ->
                 val reason = t.message ?: t.javaClass.simpleName
                 val msg = getString(R.string.snackbar_save_failed, reason)
-                statusText.text = msg
                 Snackbar.make(findViewById(R.id.settingsRoot), msg, Snackbar.LENGTH_LONG).show()
             }
 
@@ -309,9 +447,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun resolveTargetWidth(): Int? {
-        val checkedId = resizeRadioGroup.checkedRadioButtonId
-
-        if (checkedId == R.id.resizeCustom) {
+        if (customSelected) {
             val text = customInput.text?.toString()?.trim().orEmpty()
             val pct = text.toIntOrNull()
             if (pct == null || pct !in 1..100) {
@@ -319,12 +455,10 @@ class SettingsActivity : AppCompatActivity() {
                 return null
             }
             customInputLayout.error = null
-            return (sourceW * pct / 100).coerceAtLeast(1)
+            return (outputW * pct / 100).coerceAtLeast(1)
         }
-
-        val rb = findViewById<RadioButton>(checkedId)
-        val data = rb?.tag as? PresetData
-        if (data == null) {
+        val preset = selectedPreset
+        if (preset == null) {
             Snackbar.make(
                 findViewById(R.id.settingsRoot),
                 R.string.error_resize_not_selected,
@@ -332,20 +466,17 @@ class SettingsActivity : AppCompatActivity() {
             ).show()
             return null
         }
-        return data.targetW
+        return preset.targetW
     }
 
     private fun resolveTargetWidthQuiet(): Int? {
-        val checkedId = resizeRadioGroup.checkedRadioButtonId
-        if (checkedId == R.id.resizeCustom) {
+        if (customSelected) {
             val text = customInput.text?.toString()?.trim().orEmpty()
             val pct = text.toIntOrNull()
             if (pct == null || pct !in 1..100) return null
-            return (sourceW * pct / 100).coerceAtLeast(1)
+            return (outputW * pct / 100).coerceAtLeast(1)
         }
-        val rb = findViewById<RadioButton>(checkedId)
-        val data = rb?.tag as? PresetData ?: return null
-        return data.targetW
+        return selectedPreset?.targetW
     }
 
     private fun formatFileSize(bytes: Long): String = when {
@@ -355,20 +486,10 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     companion object {
-        const val EXTRA_IMAGE_URI = "image_uri"
+        const val EXTRA_IMAGE_URIS = "image_uris"
         private const val DEBOUNCE_MS = 300L
 
-        private val PERCENT_PRESET_IDS = listOf(
-            100 to R.id.resize100,
-            50 to R.id.resize50,
-            40 to R.id.resize40,
-            30 to R.id.resize30,
-            20 to R.id.resize20,
-        )
-
-        private val FIXED_WIDTH_PRESET_IDS = listOf(
-            1080 to R.id.resize1080,
-            768 to R.id.resize768,
-        )
+        private val PERCENT_PRESETS = listOf(100, 50, 40, 30, 20)
+        private val FIXED_WIDTHS = listOf(1080, 768)
     }
 }
