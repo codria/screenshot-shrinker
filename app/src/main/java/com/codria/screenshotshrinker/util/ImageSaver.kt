@@ -14,6 +14,8 @@ object ImageSaver {
         val uri: Uri,
         val displayName: String,
         val sizeBytes: Long,
+        val width: Int,
+        val height: Int,
     )
 
     /**
@@ -60,6 +62,12 @@ object ImageSaver {
         }
 
         val size = resolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: 0L
-        return SaveResult(uri = uri, displayName = displayName, sizeBytes = size)
+        return SaveResult(
+            uri = uri,
+            displayName = displayName,
+            sizeBytes = size,
+            width = bitmap.width,
+            height = bitmap.height,
+        )
     }
 }

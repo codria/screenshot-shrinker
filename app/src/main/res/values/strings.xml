@@ -1,7 +1,14 @@
 <resources>
     <string name="app_name">Screenshot Shrinker</string>
+    <string name="app_name_short">S-Shrinker</string>
     <string name="action_pick_image">画像を選択</string>
     <string name="action_save">保存</string>
+    <string name="action_open_in_gallery">ギャラリーで開く</string>
+    <string name="action_share">共有</string>
+    <string name="action_back">戻る</string>
+    <string name="action_start_over">最初から</string>
+    <string name="result_image_description">保存した画像のプレビュー</string>
+    <string name="error_no_handler">対応するアプリが見つかりませんでした</string>
 
     <string name="label_resize">リサイズ</string>
     <string name="resize_custom">カスタム</string>
@@ -13,7 +20,6 @@
     <string name="estimate_loading">計算中…</string>
     <string name="estimate_size">予測: %1$s</string>
     <string name="estimate_unavailable">―</string>
-    <string name="snackbar_save_success">保存しました: %1$s (%2$s)</string>
     <string name="snackbar_save_failed">保存に失敗: %1$s</string>
 
     <string name="error_invalid_size">1〜100の値を入力してください</string>

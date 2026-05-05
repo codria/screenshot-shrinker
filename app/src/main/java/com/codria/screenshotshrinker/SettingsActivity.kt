@@ -1,5 +1,6 @@
 package com.codria.screenshotshrinker
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -34,6 +35,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -270,8 +274,8 @@ class SettingsActivity : AppCompatActivity() {
             val outcome = runCatching {
                 withContext(Dispatchers.IO) {
                     val resized = ImageResizer.resizeToWidth(src, targetW)
-                    val baseName = ImageLoader.getDisplayNameBase(this@SettingsActivity, sourceUri)
-                    val outputName = "shrunk_$baseName.jpg"
+                    val timestamp = SimpleDateFormat("yyMMdd_HHmmss", Locale.US).format(Date())
+                    val outputName = "shrunk_$timestamp.jpg"
                     val saved = ImageSaver.saveJpeg(
                         this@SettingsActivity,
                         resized,
@@ -284,13 +288,15 @@ class SettingsActivity : AppCompatActivity() {
             }
 
             outcome.onSuccess { saved ->
-                val msg = getString(
-                    R.string.snackbar_save_success,
-                    saved.displayName,
-                    formatFileSize(saved.sizeBytes),
-                )
-                statusText.text = msg
-                Snackbar.make(findViewById(R.id.settingsRoot), msg, Snackbar.LENGTH_LONG).show()
+                statusText.text = ""
+                val intent = Intent(this@SettingsActivity, ResultActivity::class.java).apply {
+                    putExtra(ResultActivity.EXTRA_RESULT_URI, saved.uri)
+                    putExtra(ResultActivity.EXTRA_DISPLAY_NAME, saved.displayName)
+                    putExtra(ResultActivity.EXTRA_SIZE_BYTES, saved.sizeBytes)
+                    putExtra(ResultActivity.EXTRA_WIDTH, saved.width)
+                    putExtra(ResultActivity.EXTRA_HEIGHT, saved.height)
+                }
+                startActivity(intent)
             }.onFailure { t ->
                 val reason = t.message ?: t.javaClass.simpleName
                 val msg = getString(R.string.snackbar_save_failed, reason)
