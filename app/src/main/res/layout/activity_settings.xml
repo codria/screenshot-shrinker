@@ -26,35 +26,40 @@
             android:orientation="vertical">
 
             <RadioButton
-                android:id="@+id/resize1080"
+                android:id="@+id/resize100"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/resize_1080" />
-
-            <RadioButton
-                android:id="@+id/resize720"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/resize_720" />
+                android:checked="true" />
 
             <RadioButton
                 android:id="@+id/resize50"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/resize_50" />
+                android:layout_height="wrap_content" />
 
             <RadioButton
-                android:id="@+id/resize25"
+                android:id="@+id/resize40"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/resize_25" />
+                android:layout_height="wrap_content" />
 
             <RadioButton
-                android:id="@+id/resizeOriginal"
+                android:id="@+id/resize30"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/resize_original" />
+                android:layout_height="wrap_content" />
+
+            <RadioButton
+                android:id="@+id/resize20"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <RadioButton
+                android:id="@+id/resize1080"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <RadioButton
+                android:id="@+id/resize768"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
 
             <RadioButton
                 android:id="@+id/resizeCustom"
@@ -63,20 +68,35 @@
                 android:text="@string/resize_custom" />
         </RadioGroup>
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/customInputLayout"
+        <LinearLayout
+            android:id="@+id/customRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:visibility="gone"
-            android:hint="@string/hint_custom_size">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/customInput"
-                android:layout_width="match_parent"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/customInputLayout"
+                android:layout_width="120dp"
                 android:layout_height="wrap_content"
-                android:inputType="number" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:hint="@string/hint_custom_percent">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/customInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/customResolutionText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
@@ -111,11 +131,19 @@
                 android:textAppearance="?attr/textAppearanceBodyLarge" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/estimateText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/buttonSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
+            android:layout_marginTop="16dp"
             android:text="@string/action_save" />
 
         <TextView

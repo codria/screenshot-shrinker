@@ -30,6 +30,20 @@ object ImageLoader {
         } ?: throw IOException("Bitmapデコードに失敗しました")
     }
 
+    /**
+     * URIの画像サイズ（W, H）だけを取得する。inJustDecodeBoundsで本体デコードしない。
+     */
+    fun getDimensions(context: Context, uri: Uri): Pair<Int, Int> {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri).use { stream ->
+            BitmapFactory.decodeStream(stream, null, bounds)
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            throw IOException("画像サイズを取得できませんでした")
+        }
+        return bounds.outWidth to bounds.outHeight
+    }
+
     fun getDisplayNameBase(context: Context, uri: Uri): String {
         val name = context.contentResolver.query(
             uri,
