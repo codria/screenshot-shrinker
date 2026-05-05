@@ -1,8 +1,23 @@
 <resources>
     <string name="app_name">Screenshot Shrinker</string>
     <string name="action_pick_image">画像を選択</string>
+    <string name="action_save">保存</string>
+
+    <string name="label_resize">リサイズ</string>
+    <string name="resize_1080">1080px (長辺)</string>
+    <string name="resize_720">720px (長辺)</string>
+    <string name="resize_50">50%</string>
+    <string name="resize_25">25%</string>
+    <string name="resize_original">リサイズなし</string>
+    <string name="resize_custom">カスタム</string>
+    <string name="hint_custom_size">長辺サイズ (px)</string>
+
+    <string name="label_quality">JPG品質</string>
+
     <string name="status_processing">処理中…</string>
-    <string name="status_idle">画像を選択してください</string>
     <string name="snackbar_save_success">保存しました: %1$s (%2$s)</string>
     <string name="snackbar_save_failed">保存に失敗: %1$s</string>
+
+    <string name="error_invalid_size">正しいピクセル値を入力してください</string>
+    <string name="error_resize_not_selected">リサイズ方式を選択してください</string>
 </resources>
