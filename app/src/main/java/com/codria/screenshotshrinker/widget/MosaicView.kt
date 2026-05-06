@@ -510,22 +510,11 @@ class MosaicView @JvmOverloads constructor(
                             else      -> activeHandle
                         }
                     }
-                    // Enforce minimum size (expand symmetrically from center)
-                    if (r.width() < minSizePx) {
-                        val cx = r.centerX()
-                        r.left  = cx - minSizePx / 2f
-                        r.right = cx + minSizePx / 2f
-                    }
-                    if (r.height() < minSizePx) {
-                        val cy = r.centerY()
-                        r.top    = cy - minSizePx / 2f
-                        r.bottom = cy + minSizePx / 2f
-                    }
-                    // Clamp to image bounds
-                    r.left   = r.left.coerceIn(0f, bmp.width.toFloat()  - minSizePx)
-                    r.top    = r.top.coerceIn(0f,  bmp.height.toFloat() - minSizePx)
-                    r.right  = r.right.coerceIn(minSizePx.toFloat(), bmp.width.toFloat())
-                    r.bottom = r.bottom.coerceIn(minSizePx.toFloat(), bmp.height.toFloat())
+                    // Clamp to image bounds (tiny rects are allowed during drag)
+                    r.left   = r.left.coerceIn(0f, bmp.width.toFloat())
+                    r.top    = r.top.coerceIn(0f, bmp.height.toFloat())
+                    r.right  = r.right.coerceIn(0f, bmp.width.toFloat())
+                    r.bottom = r.bottom.coerceIn(0f, bmp.height.toFloat())
                 }
                 invalidate()
                 notifyRegionsChange()
