@@ -4,15 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
-import android.view.ScaleGestureDetector
-import android.view.View
-import kotlin.math.sqrt
 
 /**
  * 画像表示 + 複数のモザイク領域指定の自前View。
@@ -29,18 +25,11 @@ class MosaicView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-) : View(context, attrs, defStyleAttr) {
+) : ZoomableImageView(context, attrs, defStyleAttr) {
 
-    private var bitmap: Bitmap? = null
-    private val imageRectF = RectF()
     private val regions: MutableList<RectF> = mutableListOf()
     private var selectedIndex: Int = -1
 
-    private val viewMatrix = Matrix()
-    private val inverseMatrix = Matrix()
-    private val tmpPts = FloatArray(2)
-
-    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
     private val nearestPaint = Paint().apply { isFilterBitmap = false }
     private val downscalePaint = Paint().apply { isFilterBitmap = true }
 
@@ -50,7 +39,7 @@ class MosaicView @JvmOverloads constructor(
         style = Paint.Style.STROKE
     }
     private val selectedOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFC107.toInt() // amber 500
+        color = 0xFFFFC107.toInt()
         strokeWidth = 2f * resources.displayMetrics.density
         style = Paint.Style.STROKE
     }
@@ -63,11 +52,6 @@ class MosaicView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    private val handleRadius: Float get() = 7f * resources.displayMetrics.density
-    private val handleHitRadius: Float get() = 28f * resources.displayMetrics.density
-    private val minSizePx: Int = 32
-    private val minScale: Float = 0.9f
-    private val maxScale: Float = 5f
     var mosaicCellPx: Int = 16
         set(value) {
             field = value.coerceIn(MIN_CELL_PX, MAX_CELL_PX)
@@ -78,9 +62,6 @@ class MosaicView @JvmOverloads constructor(
     private var activeHandle: Handle = Handle.NONE
     private var lastTouchX: Float = 0f
     private var lastTouchY: Float = 0f
-    private var dragOffsetImgX: Float = 0f
-    private var dragOffsetImgY: Float = 0f
-    private var pendingUndoPushed: Boolean = false
 
     private val undoStack: ArrayDeque<List<Rect>> = ArrayDeque()
     private val redoStack: ArrayDeque<List<Rect>> = ArrayDeque()
@@ -89,19 +70,6 @@ class MosaicView @JvmOverloads constructor(
     var onRegionsChange: ((List<Rect>) -> Unit)? = null
     var onSelectionChange: ((Int) -> Unit)? = null
     var onHistoryChange: (() -> Unit)? = null
-
-    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScale(detector: ScaleGestureDetector): Boolean {
-            val current = currentScale()
-            val raw = current * detector.scaleFactor
-            val target = raw.coerceIn(minScale, maxScale)
-            val effective = target / current
-            viewMatrix.postScale(effective, effective, detector.focusX, detector.focusY)
-            constrainPan()
-            invalidate()
-            return true
-        }
-    })
 
     fun setBitmap(bmp: Bitmap, initialRegions: List<Rect>) {
         bitmap = bmp
@@ -128,7 +96,6 @@ class MosaicView @JvmOverloads constructor(
 
     /**
      * 領域を新規追加する。サイズは画像短辺の30% (最小値以上)、位置は現在の表示中心。
-     * 追加直後の領域を選択状態にする。
      */
     fun addRegion() {
         val bmp = bitmap ?: return
@@ -165,9 +132,7 @@ class MosaicView @JvmOverloads constructor(
         onSelectionChange?.invoke(selectedIndex)
     }
 
-    /**
-     * 現在状態を Undo に積んで領域一覧を差し替える。プリセット読み込みに使用。
-     */
+    /** 現在状態を Undo に積んで領域一覧を差し替える。プリセット読み込みに使用。 */
     fun setRegionsPreset(newRegions: List<Rect>) {
         pushUndo()
         regions.clear()
@@ -212,6 +177,18 @@ class MosaicView @JvmOverloads constructor(
         onSelectionChange?.invoke(selectedIndex)
     }
 
+    private fun scheduleRegionDragUndo() {
+        val before = getRegions()
+        scheduleDragUndo {
+            if (before != getRegions()) {
+                undoStack.addLast(before)
+                if (undoStack.size > maxHistory) undoStack.removeFirst()
+                redoStack.clear()
+                onHistoryChange?.invoke()
+            }
+        }
+    }
+
     private fun pushUndo() {
         undoStack.addLast(getRegions())
         if (undoStack.size > maxHistory) undoStack.removeFirst()
@@ -219,68 +196,19 @@ class MosaicView @JvmOverloads constructor(
         onHistoryChange?.invoke()
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        recomputeImageRect()
-    }
-
-    private fun recomputeImageRect() {
-        val bmp = bitmap ?: return
-        val viewW = width.toFloat()
-        val viewH = height.toFloat()
-        if (viewW <= 0 || viewH <= 0) return
-        val scale = minOf(viewW / bmp.width, viewH / bmp.height)
-        val drawW = bmp.width * scale
-        val drawH = bmp.height * scale
-        val left = (viewW - drawW) / 2
-        val top = (viewH - drawH) / 2
-        imageRectF.set(left, top, left + drawW, top + drawH)
-    }
-
-    private fun currentScale(): Float {
-        val pts = FloatArray(9)
-        viewMatrix.getValues(pts)
-        return pts[Matrix.MSCALE_X]
-    }
-
-    private fun constrainPan() {
-        val viewW = width.toFloat()
-        val viewH = height.toFloat()
-        if (viewW <= 0 || viewH <= 0) return
-        val rect = RectF(imageRectF)
-        viewMatrix.mapRect(rect)
-        val visibleMinX = minOf(viewW, rect.width()) * VISIBLE_MIN_FRACTION
-        val visibleMinY = minOf(viewH, rect.height()) * VISIBLE_MIN_FRACTION
-        var dx = 0f
-        if (rect.right < visibleMinX) dx = visibleMinX - rect.right
-        else if (rect.left > viewW - visibleMinX) dx = (viewW - visibleMinX) - rect.left
-        var dy = 0f
-        if (rect.bottom < visibleMinY) dy = visibleMinY - rect.bottom
-        else if (rect.top > viewH - visibleMinY) dy = (viewH - visibleMinY) - rect.top
-        if (dx != 0f || dy != 0f) viewMatrix.postTranslate(dx, dy)
-    }
-
-    private companion object {
-        const val VISIBLE_MIN_FRACTION: Float = 0.25f
-        const val MIN_CELL_PX: Int = 4
-        const val MAX_CELL_PX: Int = 64
-    }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val bmp = bitmap ?: return
         if (imageRectF.isEmpty) return
 
-        // bitmap と各領域のモザイクプレビューは viewMatrix 内で描画 (zoom時に画像と一緒に拡大)
         val sc = canvas.save()
         canvas.concat(viewMatrix)
         canvas.drawBitmap(bmp, null, imageRectF, bitmapPaint)
         regions.forEach { drawMosaicPreview(canvas, bmp, it) }
         canvas.restoreToCount(sc)
 
-        // 枠線とハンドルは画面座標で描画 (zoomしても太さが変わらない)
         regions.forEachIndexed { idx, regionImage ->
-            val cv = imageRectToScreen(regionImage)
+            val cv = imageToScreenCoords(regionImage)
             if (idx == selectedIndex) {
                 canvas.drawRect(cv, selectedOutlinePaint)
                 drawHandles(canvas, cv)
@@ -349,45 +277,11 @@ class MosaicView @JvmOverloads constructor(
         else -> false
     }
 
-    private fun imageRectToScreen(src: RectF): RectF {
-        val bmp = bitmap ?: return RectF()
-        val scale = imageRectF.width() / bmp.width
-        val cv = RectF(
-            imageRectF.left + src.left * scale,
-            imageRectF.top + src.top * scale,
-            imageRectF.left + src.right * scale,
-            imageRectF.top + src.bottom * scale,
-        )
-        val arr = floatArrayOf(cv.left, cv.top, cv.right, cv.bottom)
-        viewMatrix.mapPoints(arr)
-        return RectF(arr[0], arr[1], arr[2], arr[3])
-    }
-
-    private fun viewToImageX(screenX: Float): Float {
-        val bmp = bitmap ?: return 0f
-        val scale = imageRectF.width() / bmp.width
-        viewMatrix.invert(inverseMatrix)
-        tmpPts[0] = screenX
-        tmpPts[1] = 0f
-        inverseMatrix.mapPoints(tmpPts)
-        return ((tmpPts[0] - imageRectF.left) / scale).coerceIn(0f, bmp.width.toFloat())
-    }
-
-    private fun viewToImageY(screenY: Float): Float {
-        val bmp = bitmap ?: return 0f
-        val scale = imageRectF.height() / bmp.height
-        viewMatrix.invert(inverseMatrix)
-        tmpPts[0] = 0f
-        tmpPts[1] = screenY
-        inverseMatrix.mapPoints(tmpPts)
-        return ((tmpPts[1] - imageRectF.top) / scale).coerceIn(0f, bmp.height.toFloat())
-    }
-
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (bitmap == null) return false
 
-        scaleDetector.onTouchEvent(event)
-        if (scaleDetector.isInProgress) {
+        processScaleGesture(event)
+        if (isScaleGestureInProgress) {
             activeHandle = Handle.NONE
             return true
         }
@@ -396,7 +290,6 @@ class MosaicView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 lastTouchY = event.y
-                pendingUndoPushed = false
                 handleDown(event.x, event.y)
             }
             MotionEvent.ACTION_MOVE -> {
@@ -405,6 +298,7 @@ class MosaicView @JvmOverloads constructor(
                 lastTouchY = event.y
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                commitDragUndo()
                 activeHandle = Handle.NONE
                 invalidate()
             }
@@ -413,48 +307,30 @@ class MosaicView @JvmOverloads constructor(
     }
 
     private fun handleDown(x: Float, y: Float) {
-        // 1. 選択中の領域のハンドル/内部にヒットするか
         if (selectedIndex in regions.indices) {
-            val cv = imageRectToScreen(regions[selectedIndex])
+            val cv = imageToScreenCoords(regions[selectedIndex])
             val hit = detectHandle(x, y, cv)
             if (hit != Handle.NONE) {
-                if (hit == Handle.INTERIOR) {
-                    activeHandle = Handle.INTERIOR
-                    val r = regions[selectedIndex]
-                    dragOffsetImgX = viewToImageX(x) - r.left
-                    dragOffsetImgY = viewToImageY(y) - r.top
-                } else {
-                    activeHandle = hit
-                }
-                pushUndoOnce()
+                activeHandle = hit
+                if (hit == Handle.INTERIOR) startRectDrag(x, y, regions[selectedIndex])
+                scheduleRegionDragUndo()
                 return
             }
         }
-        // 2. 他の領域 (上から下へ、後から追加されたものを優先) の内側にヒットするか
         for (i in regions.indices.reversed()) {
             if (i == selectedIndex) continue
-            val cv = imageRectToScreen(regions[i])
+            val cv = imageToScreenCoords(regions[i])
             if (cv.contains(x, y)) {
                 selectedIndex = i
                 onSelectionChange?.invoke(selectedIndex)
                 activeHandle = Handle.INTERIOR
-                pushUndoOnce()
-                val r = regions[i]
-                dragOffsetImgX = viewToImageX(x) - r.left
-                dragOffsetImgY = viewToImageY(y) - r.top
+                scheduleRegionDragUndo()
+                startRectDrag(x, y, regions[i])
                 invalidate()
                 return
             }
         }
-        // 3. どの領域にも当たらず → パン
         activeHandle = Handle.PAN
-    }
-
-    private fun pushUndoOnce() {
-        if (!pendingUndoPushed) {
-            pushUndo()
-            pendingUndoPushed = true
-        }
     }
 
     private fun handleMove(x: Float, y: Float) {
@@ -474,13 +350,8 @@ class MosaicView @JvmOverloads constructor(
                 val imgX = viewToImageX(x)
                 val imgY = viewToImageY(y)
                 if (activeHandle == Handle.INTERIOR) {
-                    val curW = r.width()
-                    val curH = r.height()
-                    val newLeft = (imgX - dragOffsetImgX).coerceIn(0f, bmp.width - curW)
-                    val newTop = (imgY - dragOffsetImgY).coerceIn(0f, bmp.height - curH)
-                    r.set(newLeft, newTop, newLeft + curW, newTop + curH)
+                    applyRectDrag(x, y, r)
                 } else {
-                    // Apply handle movement (cross-over allowed at this stage)
                     when (activeHandle) {
                         Handle.TL -> { r.left = imgX; r.top = imgY }
                         Handle.TR -> { r.right = imgX; r.top = imgY }
@@ -492,7 +363,6 @@ class MosaicView @JvmOverloads constructor(
                         Handle.R  -> r.right = imgX
                         else -> return
                     }
-                    // Cross-over: normalize inverted rect, then switch to the new handle
                     val crossX = r.left > r.right
                     val crossY = r.top > r.bottom
                     if (crossX) { val tmp = r.left; r.left = r.right; r.right = tmp }
@@ -510,7 +380,6 @@ class MosaicView @JvmOverloads constructor(
                             else      -> activeHandle
                         }
                     }
-                    // Clamp to image bounds (tiny rects are allowed during drag)
                     r.left   = r.left.coerceIn(0f, bmp.width.toFloat())
                     r.top    = r.top.coerceIn(0f, bmp.height.toFloat())
                     r.right  = r.right.coerceIn(0f, bmp.width.toFloat())
@@ -538,13 +407,12 @@ class MosaicView @JvmOverloads constructor(
         return Handle.NONE
     }
 
-    private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float {
-        val dx = x1 - x2
-        val dy = y1 - y2
-        return sqrt(dx * dx + dy * dy)
-    }
-
     private fun notifyRegionsChange() {
         onRegionsChange?.invoke(getRegions())
+    }
+
+    private companion object {
+        const val MIN_CELL_PX: Int = 4
+        const val MAX_CELL_PX: Int = 64
     }
 }

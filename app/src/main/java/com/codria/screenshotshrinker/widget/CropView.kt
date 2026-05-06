@@ -5,54 +5,32 @@ import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
-import android.view.ScaleGestureDetector
-import android.view.View
-import kotlin.math.sqrt
 
 /**
  * 画像表示 + 矩形クロップ領域指定の自前View。
  *
- * - ピンチで拡大 (1〜5倍)、ドラッグで移動 (拡大時のみ)。拡大状態は ACTION_UP 後も維持。
+ * - ピンチで拡大 (0.3〜5倍)、ドラッグで移動。拡大状態は ACTION_UP 後も維持。
  * - 4角ハンドル + 4辺ハンドル(アスペクト比フリー時のみ有効)
  * - 内部ドラッグで全体移動
  * - 画像端へのスナップ (アスペクト比フリー時)
  * - アスペクト比ロック中の角ドラッグは反対角を支点にratio保持
  * - Undo/Redo (drag開始 / aspect変更 / プリセット読込 で履歴push)
- *
- * 座標系:
- * - cropRectImage: 元画像の座標系で保持 (zoom/panに影響されない)
- * - imageRectF: 画像の "natural" 表示位置 (fitCenter、zoom無し時の bitmap が描画される矩形)
- * - viewMatrix: pinch/pan による追加変換。drawBitmap時に concat、handle描画時には mapPoints で位置のみ変換
  */
 class CropView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-) : View(context, attrs, defStyleAttr) {
+) : ZoomableImageView(context, attrs, defStyleAttr) {
 
-    private var bitmap: Bitmap? = null
-    private val imageRectF = RectF()
     private val cropRectImage = RectF()
     private var aspectRatio: Float = 0f
 
-    private val viewMatrix = Matrix()
-    private val inverseMatrix = Matrix()
-    private val tmpPts = FloatArray(2)
-
-    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
-    /**
-     * 外側マスク: グレー2色 (#555555 / #999999) の市松模様。
-     * 中央値 (#777777) から上下に等距離なので主張が穏やか。
-     * 黒画像でも白画像でも必ずタイルとのコントラストが付く。
-     */
     private val overlayPaint: Paint by lazy {
         val cellPx = (8f * resources.displayMetrics.density).toInt().coerceAtLeast(8)
         val full = cellPx * 2
@@ -74,7 +52,7 @@ class CropView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
     private val activeHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFC107.toInt() // Material amber 500
+        color = 0xFFFFC107.toInt()
         style = Paint.Style.FILL
     }
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -83,12 +61,7 @@ class CropView @JvmOverloads constructor(
         style = Paint.Style.STROKE
     }
 
-    private val handleRadius: Float get() = 7f * resources.displayMetrics.density
-    private val handleHitRadius: Float get() = 28f * resources.displayMetrics.density
     private val snapThresholdView: Float get() = 8f * resources.displayMetrics.density
-    private val minSizePx: Int = 32
-    private val minScale: Float = 0.9f
-    private val maxScale: Float = 5f
 
     private enum class Handle { NONE, TL, TR, BL, BR, T, B, L, R, INTERIOR, PAN }
     private var activeHandle: Handle = Handle.NONE
@@ -101,19 +74,6 @@ class CropView @JvmOverloads constructor(
 
     var onCropChange: ((Rect) -> Unit)? = null
     var onHistoryChange: (() -> Unit)? = null
-
-    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScale(detector: ScaleGestureDetector): Boolean {
-            val current = currentScale()
-            val raw = current * detector.scaleFactor
-            val target = raw.coerceIn(minScale, maxScale)
-            val effective = target / current
-            viewMatrix.postScale(effective, effective, detector.focusX, detector.focusY)
-            constrainPan()
-            invalidate()
-            return true
-        }
-    })
 
     fun setBitmap(bmp: Bitmap, initialCrop: Rect? = null) {
         bitmap = bmp
@@ -211,73 +171,16 @@ class CropView @JvmOverloads constructor(
         cropRectImage.set(left, top, left + targetW, top + targetH)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        recomputeImageRect()
-    }
-
-    private fun recomputeImageRect() {
-        val bmp = bitmap ?: return
-        val viewW = width.toFloat()
-        val viewH = height.toFloat()
-        if (viewW <= 0 || viewH <= 0) return
-        val scale = minOf(viewW / bmp.width, viewH / bmp.height)
-        val drawW = bmp.width * scale
-        val drawH = bmp.height * scale
-        val left = (viewW - drawW) / 2
-        val top = (viewH - drawH) / 2
-        imageRectF.set(left, top, left + drawW, top + drawH)
-    }
-
-    private fun currentScale(): Float {
-        val pts = FloatArray(9)
-        viewMatrix.getValues(pts)
-        return pts[Matrix.MSCALE_X]
-    }
-
-    /**
-     * パン後の位置をクランプ。等倍/拡大に関わらず統一ルール:
-     * 軸ごとに「viewと画像の小さい方の 25%」が必ず重なって残るようにする。
-     * - 等倍 余白あり軸: 画像幅の 25% が view 内に残る (= 画像の 75% を端から外せる)
-     * - 等倍 ピッタリ軸 / 拡大時: view 幅の 25% が画像で覆われている (= view の 75% を空ける)
-     */
-    private fun constrainPan() {
-        val viewW = width.toFloat()
-        val viewH = height.toFloat()
-        if (viewW <= 0 || viewH <= 0) return
-        val rect = RectF(imageRectF)
-        viewMatrix.mapRect(rect)
-
-        val visibleMinX = minOf(viewW, rect.width()) * VISIBLE_MIN_FRACTION
-        val visibleMinY = minOf(viewH, rect.height()) * VISIBLE_MIN_FRACTION
-
-        var dx = 0f
-        if (rect.right < visibleMinX) dx = visibleMinX - rect.right
-        else if (rect.left > viewW - visibleMinX) dx = (viewW - visibleMinX) - rect.left
-
-        var dy = 0f
-        if (rect.bottom < visibleMinY) dy = visibleMinY - rect.bottom
-        else if (rect.top > viewH - visibleMinY) dy = (viewH - visibleMinY) - rect.top
-
-        if (dx != 0f || dy != 0f) viewMatrix.postTranslate(dx, dy)
-    }
-
-    private companion object {
-        /** 等倍パン時の画像残存最小比率 (= 1 - 「ずらせる比率」) */
-        const val VISIBLE_MIN_FRACTION: Float = 0.25f
-    }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val bmp = bitmap ?: return
         if (imageRectF.isEmpty) return
 
-        // bitmap と外側マスク (fill) は transform 内で描画 (zoom時に画像と一緒に拡大される)
         val sc = canvas.save()
         canvas.concat(viewMatrix)
 
         canvas.drawBitmap(bmp, null, imageRectF, bitmapPaint)
-        val cvPre = imageRectToView(cropRectImage)
+        val cvPre = imageToViewCoords(cropRectImage)
 
         canvas.drawRect(imageRectF.left, imageRectF.top, imageRectF.right, cvPre.top, overlayPaint)
         canvas.drawRect(imageRectF.left, cvPre.bottom, imageRectF.right, imageRectF.bottom, overlayPaint)
@@ -286,9 +189,7 @@ class CropView @JvmOverloads constructor(
 
         canvas.restoreToCount(sc)
 
-        // grid/handles/inside-tint は画面座標で描画 (zoomしても太さが変わらない)
-        // 境界線は外側マスク(80%黒)と内側tint(8%白)のコントラストで表現するため省略
-        val cvScreen = cropRectInScreen()
+        val cvScreen = imageToScreenCoords(cropRectImage)
         canvas.drawRect(cvScreen, insideTintPaint)
         drawGrid(canvas, cvScreen)
         drawHandles(canvas, cvScreen)
@@ -318,11 +219,6 @@ class CropView @JvmOverloads constructor(
         }
     }
 
-    /**
-     * activeHandle が動かす辺の上に存在するハンドル全て(対角の辺端ハンドル含む)を判定。
-     * 例: TL drag中 → 上辺 (TL,T,TR) + 左辺 (TL,L,BL) = TL,T,TR,L,BL を highlight。
-     *     T drag中 → 上辺 (TL,T,TR) のみ highlight。
-     */
     private fun isHandleAffected(h: Handle): Boolean = when (activeHandle) {
         Handle.TL -> h in setOf(Handle.TL, Handle.T, Handle.TR, Handle.L, Handle.BL)
         Handle.TR -> h in setOf(Handle.TR, Handle.T, Handle.TL, Handle.R, Handle.BR)
@@ -335,70 +231,33 @@ class CropView @JvmOverloads constructor(
         else -> false
     }
 
-    private fun imageRectToView(src: RectF): RectF {
-        val bmp = bitmap ?: return RectF()
-        val scale = imageRectF.width() / bmp.width
-        return RectF(
-            imageRectF.left + src.left * scale,
-            imageRectF.top + src.top * scale,
-            imageRectF.left + src.right * scale,
-            imageRectF.top + src.bottom * scale,
-        )
-    }
-
-    /**
-     * 画面座標 → 元画像座標。viewMatrix の inverse を経由。
-     */
-    private fun viewToImageX(screenX: Float): Float {
-        val bmp = bitmap ?: return 0f
-        val scale = imageRectF.width() / bmp.width
-        viewMatrix.invert(inverseMatrix)
-        tmpPts[0] = screenX
-        tmpPts[1] = 0f
-        inverseMatrix.mapPoints(tmpPts)
-        return ((tmpPts[0] - imageRectF.left) / scale).coerceIn(0f, bmp.width.toFloat())
-    }
-
-    private fun viewToImageY(screenY: Float): Float {
-        val bmp = bitmap ?: return 0f
-        val scale = imageRectF.height() / bmp.height
-        viewMatrix.invert(inverseMatrix)
-        tmpPts[0] = 0f
-        tmpPts[1] = screenY
-        inverseMatrix.mapPoints(tmpPts)
-        return ((tmpPts[1] - imageRectF.top) / scale).coerceIn(0f, bmp.height.toFloat())
-    }
-
-    /**
-     * cv (pre-transform座標) を viewMatrix で変換した RectF を返す。ハンドル検出に使用。
-     */
-    private fun cropRectInScreen(): RectF {
-        val cv = imageRectToView(cropRectImage)
-        val arr = floatArrayOf(cv.left, cv.top, cv.right, cv.bottom)
-        viewMatrix.mapPoints(arr)
-        return RectF(arr[0], arr[1], arr[2], arr[3])
-    }
-
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (bitmap == null) return false
 
-        // ピンチを先に処理 (常に通す: 空エリアでのピンチも検出するため)
-        scaleDetector.onTouchEvent(event)
-        if (scaleDetector.isInProgress) {
+        processScaleGesture(event)
+        if (isScaleGestureInProgress) {
             activeHandle = Handle.NONE
             return true
         }
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val cvScreen = cropRectInScreen()
+                val cvScreen = imageToScreenCoords(cropRectImage)
                 val hit = detectHandle(event.x, event.y, cvScreen)
                 activeHandle = when {
                     hit != Handle.NONE -> {
-                        pushUndoFromCurrent()
+                        if (hit == Handle.INTERIOR) startRectDrag(event.x, event.y, cropRectImage)
+                        val before = getCropRect()
+                        scheduleDragUndo {
+                            if (before != getCropRect()) {
+                                undoStack.addLast(before)
+                                if (undoStack.size > maxHistory) undoStack.removeFirst()
+                                redoStack.clear()
+                                onHistoryChange?.invoke()
+                            }
+                        }
                         hit
                     }
-                    // ハンドル外タップ: 等倍でもパン可能 (constrainPanで適切な範囲に制約される)
                     else -> Handle.PAN
                 }
                 lastTouchX = event.x
@@ -422,11 +281,11 @@ class CropView @JvmOverloads constructor(
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                commitDragUndo()
                 activeHandle = Handle.NONE
                 invalidate()
             }
         }
-        // 常にtrue: 後続イベント (POINTER_DOWN/MOVE 等) を受け続けるため、空エリアでのpinchも有効
         return true
     }
 
@@ -448,12 +307,6 @@ class CropView @JvmOverloads constructor(
         return Handle.NONE
     }
 
-    private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float {
-        val dx = x1 - x2
-        val dy = y1 - y2
-        return sqrt(dx * dx + dy * dy)
-    }
-
     private fun handleDrag(viewX: Float, viewY: Float) {
         val bmp = bitmap ?: return
         val imgX = viewToImageX(viewX)
@@ -461,13 +314,7 @@ class CropView @JvmOverloads constructor(
         val r = cropRectImage
 
         if (activeHandle == Handle.INTERIOR) {
-            val dxImg = imgX - viewToImageX(lastTouchX)
-            val dyImg = imgY - viewToImageY(lastTouchY)
-            val curW = r.width()
-            val curH = r.height()
-            val newLeft = (r.left + dxImg).coerceIn(0f, bmp.width - curW)
-            val newTop = (r.top + dyImg).coerceIn(0f, bmp.height - curH)
-            r.set(newLeft, newTop, newLeft + curW, newTop + curH)
+            applyRectDrag(viewX, viewY, r)
             return
         }
 
@@ -531,7 +378,6 @@ class CropView @JvmOverloads constructor(
     }
 
     private fun applySnap(r: RectF, bmp: Bitmap) {
-        // スナップ閾値を 画面ピクセル × inverse zoom で算出
         val snapImgX = (snapThresholdView / currentScale()) * bmp.width / imageRectF.width()
         val snapImgY = (snapThresholdView / currentScale()) * bmp.height / imageRectF.height()
         if (r.left < snapImgX) r.left = 0f
