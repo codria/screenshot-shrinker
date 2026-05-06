@@ -10,7 +10,7 @@ import android.provider.OpenableColumns
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
-import android.widget.ImageView
+import com.codria.screenshotshrinker.widget.PreviewView
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -20,6 +20,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.codria.screenshotshrinker.util.ImageConcatenator
+import com.codria.screenshotshrinker.util.toFileSizeString
 import com.codria.screenshotshrinker.util.ImageLoader
 import com.codria.screenshotshrinker.util.ImageMosaicker
 import com.codria.screenshotshrinker.util.ImageResizer
@@ -65,7 +66,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var concatRow: LinearLayout
     private lateinit var directionRadioGroup: RadioGroup
-    private lateinit var previewImage: ImageView
+    private lateinit var previewImage: PreviewView
     private lateinit var resizeLabelText: TextView
     private lateinit var resizeDropdown: AutoCompleteTextView
     private lateinit var customSlider: Slider
@@ -329,7 +330,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun updateQualityLabel(estimateStr: String) {
         val base = getString(R.string.label_quality)
         qualityLabelText.text = if (totalSourceBytes > 0) {
-            "$base (${formatFileSize(totalSourceBytes)} → $estimateStr)"
+            "$base (${totalSourceBytes.toFileSizeString()} → $estimateStr)"
         } else {
             base
         }
@@ -467,7 +468,7 @@ class SettingsActivity : AppCompatActivity() {
             if (newPreview != null) {
                 val old = previewBitmap
                 previewBitmap = newPreview
-                previewImage.setImageBitmap(newPreview)
+                previewImage.setImage(newPreview)
                 if (old != null && old !== newPreview && old !in sources) {
                     old.recycle()
                 }
@@ -511,7 +512,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
             bytes.onSuccess { b ->
-                updateQualityLabel(formatFileSize(b))
+                updateQualityLabel(b.toFileSizeString())
             }.onFailure {
                 updateQualityLabel(getString(R.string.estimate_unavailable))
             }
@@ -620,12 +621,6 @@ class SettingsActivity : AppCompatActivity() {
             .putInt(KEY_RESIZE_PERCENT, pct)
             .putBoolean(KEY_RESIZE_CUSTOM, customSelected)
             .apply()
-    }
-
-    private fun formatFileSize(bytes: Long): String = when {
-        bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
-        bytes >= 1_000 -> "%.1f KB".format(bytes / 1_000.0)
-        else -> "$bytes B"
     }
 
     companion object {
