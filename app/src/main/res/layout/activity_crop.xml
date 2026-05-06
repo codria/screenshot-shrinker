@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cropRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".CropActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp"
+        android:text="@string/title_trim"
+        android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+    <com.codria.screenshotshrinker.widget.CropView
+        android:id="@+id/cropView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="?attr/colorSurfaceContainer" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_image_row"
+        android:layout_marginHorizontal="2dp"
+        android:layout_marginTop="4dp"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/cropSizeInfo"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/bg_button_capsule"
+                android:clipToOutline="true"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/buttonUndo"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:contentDescription="@string/action_undo"
+                    app:icon="@drawable/ic_undo" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="match_parent"
+                    android:background="?attr/colorOutline" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/buttonRedo"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:contentDescription="@string/action_redo"
+                    app:icon="@drawable/ic_redo" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="X"
+                android:textAppearance="?attr/textAppearanceLabelMedium" />
+
+            <EditText
+                android:id="@+id/editX"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:minHeight="0dp"
+                android:paddingVertical="6dp"
+                android:singleLine="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Y"
+                android:textAppearance="?attr/textAppearanceLabelMedium" />
+
+            <EditText
+                android:id="@+id/editY"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:minHeight="0dp"
+                android:paddingVertical="6dp"
+                android:singleLine="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="W"
+                android:textAppearance="?attr/textAppearanceLabelMedium" />
+
+            <EditText
+                android:id="@+id/editW"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:minHeight="0dp"
+                android:paddingVertical="6dp"
+                android:singleLine="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="H"
+                android:textAppearance="?attr/textAppearanceLabelMedium" />
+
+            <EditText
+                android:id="@+id/editH"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:minHeight="0dp"
+                android:paddingVertical="6dp"
+                android:singleLine="true" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/aspectChipGroup"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        app:singleSelection="true"
+        app:selectionRequired="true">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipFree"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="@string/aspect_free"
+            app:checkedIconVisible="false" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip1to1"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/aspect_1_1"
+            app:checkedIconVisible="false" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip4to3"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/aspect_4_3"
+            app:checkedIconVisible="false" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip16to9"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/aspect_16_9"
+            app:checkedIconVisible="false" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipReset"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/aspect_reset"
+            app:checkedIconVisible="false" />
+    </com.google.android.material.chip.ChipGroup>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="4dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonSavePreset"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:minHeight="0dp"
+            android:paddingHorizontal="4dp"
+            android:text="@string/action_save_preset" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="2"
+            android:background="@drawable/bg_button_capsule"
+            android:clipToOutline="true"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonSlot1"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minHeight="0dp"
+                android:paddingHorizontal="4dp"
+                android:text="@string/action_slot_1"
+                app:icon="@drawable/ic_slot_empty"
+                app:iconPadding="4dp"
+                app:iconSize="14dp" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="?attr/colorOutline" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonSlot2"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minHeight="0dp"
+                android:paddingHorizontal="4dp"
+                android:text="@string/action_slot_2"
+                app:icon="@drawable/ic_slot_empty"
+                app:iconPadding="4dp"
+                app:iconSize="14dp" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="?attr/colorOutline" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonSlot3"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minHeight="0dp"
+                android:paddingHorizontal="4dp"
+                android:text="@string/action_slot_3"
+                app:icon="@drawable/ic_slot_empty"
+                app:iconPadding="4dp"
+                app:iconSize="14dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonCancel"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:text="@string/action_cancel" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonOk"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="@string/action_ok" />
+    </LinearLayout>
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/topToast"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="32dp"
+        android:background="@drawable/bg_top_toast"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="10dp"
+        android:textColor="@android:color/white"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:visibility="gone" />
+
+</FrameLayout>

@@ -14,7 +14,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.codria.screenshotshrinker.util.ImageLoader
-import com.codria.screenshotshrinker.util.LongClickHelper
+import com.codria.screenshotshrinker.util.PresetSlotManager
+import com.codria.screenshotshrinker.util.TopToast
 import com.codria.screenshotshrinker.widget.MosaicView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
@@ -25,7 +26,7 @@ import kotlinx.coroutines.withContext
 class MosaicActivity : AppCompatActivity() {
 
     private lateinit var mosaicView: MosaicView
-    private lateinit var countInfo: TextView
+    private lateinit var textCellSize: TextView
     private lateinit var buttonUndo: MaterialButton
     private lateinit var buttonRedo: MaterialButton
     private lateinit var buttonCellFiner: MaterialButton
@@ -36,8 +37,19 @@ class MosaicActivity : AppCompatActivity() {
     private lateinit var buttonSavePreset: MaterialButton
     private lateinit var slotButtons: List<MaterialButton>
 
-    private var isSaveMode: Boolean = false
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    private val topToast: TopToast by lazy { TopToast(findViewById(R.id.topToast)) }
+    private val presetSlotManager: PresetSlotManager by lazy {
+        PresetSlotManager(
+            saveButton = buttonSavePreset,
+            slotButtons = slotButtons,
+            topToast = topToast,
+            isSlotFilled = { slot -> prefs.contains(keySlot(slot)) },
+            onSaveToSlot = { slot -> savePresetTo(slot) },
+            onLoadFromSlot = { slot -> loadPresetFrom(slot) },
+            onClearSlot = { slot -> clearPresetSlot(slot) },
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +77,7 @@ class MosaicActivity : AppCompatActivity() {
         val initialCellPx = intent.getIntExtra(EXTRA_INIT_CELL_PX, DEFAULT_CELL_PX)
 
         mosaicView = findViewById(R.id.mosaicView)
-        countInfo = findViewById(R.id.mosaicCountInfo)
+        textCellSize = findViewById(R.id.textCellSize)
         buttonUndo = findViewById(R.id.buttonUndo)
         buttonRedo = findViewById(R.id.buttonRedo)
         buttonCellFiner = findViewById(R.id.buttonCellFiner)
@@ -82,12 +94,8 @@ class MosaicActivity : AppCompatActivity() {
 
         mosaicView.mosaicCellPx = initialCellPx
 
-        mosaicView.onRegionsChange = { regions ->
-            updateCountInfo(regions.size)
-        }
-        mosaicView.onSelectionChange = {
-            updateActionButtonsEnabled()
-        }
+        mosaicView.onRegionsChange = { updateActionButtonsEnabled() }
+        mosaicView.onSelectionChange = { updateActionButtonsEnabled() }
         mosaicView.onHistoryChange = {
             updateUndoRedoEnabled()
             updateActionButtonsEnabled()
@@ -115,15 +123,7 @@ class MosaicActivity : AppCompatActivity() {
         buttonDeleteSelected.setOnClickListener { mosaicView.deleteSelected() }
         buttonDeleteAll.setOnClickListener { mosaicView.deleteAll() }
 
-        buttonSavePreset.setOnClickListener { toggleSaveMode() }
-        slotButtons.forEachIndexed { idx, btn ->
-            val slot = idx + 1
-            LongClickHelper.attach(
-                btn,
-                onClick = { handleSlotClick(slot) },
-                onLongClick = { clearPresetSlot(slot) },
-            )
-        }
+        presetSlotManager.attachListeners()
 
         findViewById<MaterialButton>(R.id.buttonCancel).setOnClickListener { finish() }
         findViewById<MaterialButton>(R.id.buttonOk).setOnClickListener {
@@ -136,11 +136,10 @@ class MosaicActivity : AppCompatActivity() {
             finish()
         }
 
-        updateCountInfo(initialRegions.size)
         updateUndoRedoEnabled()
         updateActionButtonsEnabled()
         updateCellButtons()
-        refreshSlotIcons()
+        presetSlotManager.refreshIcons()
         loadBitmapAsync(sourceUri, initialRegions)
     }
 
@@ -158,7 +157,6 @@ class MosaicActivity : AppCompatActivity() {
             }
             bmp.onSuccess {
                 mosaicView.setBitmap(it, initialRegions)
-                updateCountInfo(initialRegions.size)
                 updateUndoRedoEnabled()
                 updateActionButtonsEnabled()
             }.onFailure { t ->
@@ -171,10 +169,6 @@ class MosaicActivity : AppCompatActivity() {
                 finish()
             }
         }
-    }
-
-    private fun updateCountInfo(count: Int) {
-        countInfo.text = getString(R.string.mosaic_count_info, count)
     }
 
     private fun updateUndoRedoEnabled() {
@@ -191,28 +185,7 @@ class MosaicActivity : AppCompatActivity() {
     private fun updateCellButtons() {
         buttonCellFiner.isEnabled = mosaicView.mosaicCellPx > CELL_PX_STEPS.first()
         buttonCellCoarser.isEnabled = mosaicView.mosaicCellPx < CELL_PX_STEPS.last()
-    }
-
-    // ── プリセット保存モード ─────────────────────────────────────────────
-
-    private fun toggleSaveMode() {
-        isSaveMode = !isSaveMode
-        if (isSaveMode) {
-            buttonSavePreset.setText(R.string.action_save_preset_active)
-            showAnchoredSnackbar(R.string.snackbar_pick_save_slot)
-        } else {
-            buttonSavePreset.setText(R.string.action_save_preset)
-        }
-    }
-
-    private fun handleSlotClick(slot: Int) {
-        if (isSaveMode) {
-            savePresetTo(slot)
-            isSaveMode = false
-            buttonSavePreset.setText(R.string.action_save_preset)
-        } else {
-            loadPresetFrom(slot)
-        }
+        textCellSize.text = getString(R.string.label_coarseness_n, mosaicView.mosaicCellPx)
     }
 
     private fun savePresetTo(slot: Int) {
@@ -220,13 +193,13 @@ class MosaicActivity : AppCompatActivity() {
         val encoded = regions.flatMap { listOf(it.left, it.top, it.width(), it.height()) }
             .joinToString(",")
         prefs.edit().putString(keySlot(slot), encoded).apply()
-        refreshSlotIcons()
-        showAnchoredSnackbar(R.string.snackbar_preset_saved)
+        presetSlotManager.refreshIcons()
+        topToast.show(R.string.snackbar_preset_saved)
     }
 
     private fun loadPresetFrom(slot: Int) {
         val encoded = prefs.getString(keySlot(slot), null) ?: run {
-            showAnchoredSnackbar(R.string.snackbar_preset_empty)
+            topToast.show(R.string.snackbar_preset_empty)
             return
         }
         val regions = decodeRegions(encoded)
@@ -236,8 +209,8 @@ class MosaicActivity : AppCompatActivity() {
     private fun clearPresetSlot(slot: Int) {
         if (!prefs.contains(keySlot(slot))) return
         prefs.edit().remove(keySlot(slot)).apply()
-        refreshSlotIcons()
-        showAnchoredSnackbarFormatted(getString(R.string.snackbar_preset_cleared, slot))
+        presetSlotManager.refreshIcons()
+        topToast.show(getString(R.string.snackbar_preset_cleared, slot))
     }
 
     private fun decodeRegions(encoded: String): List<Rect> {
@@ -253,45 +226,7 @@ class MosaicActivity : AppCompatActivity() {
         return out
     }
 
-    private fun refreshSlotIcons() {
-        slotButtons.forEachIndexed { idx, btn ->
-            val slot = idx + 1
-            btn.setIconResource(
-                if (prefs.contains(keySlot(slot))) R.drawable.ic_slot_filled else R.drawable.ic_slot_empty,
-            )
-        }
-    }
-
     private fun keySlot(slot: Int) = "mosaic_slot_$slot"
-
-    // ── トースト ──────────────────────────────────────────────────────────
-
-    private val hideTopToastRunnable = Runnable {
-        val toast = findViewById<TextView>(R.id.topToast)
-        toast.animate().alpha(0f).setDuration(200L).withEndAction {
-            toast.visibility = android.view.View.GONE
-        }.start()
-    }
-
-    private fun showAnchoredSnackbar(resId: Int) {
-        val toast = findViewById<TextView>(R.id.topToast)
-        toast.removeCallbacks(hideTopToastRunnable)
-        toast.setText(resId)
-        toast.alpha = 0f
-        toast.visibility = android.view.View.VISIBLE
-        toast.animate().alpha(1f).setDuration(180L).start()
-        toast.postDelayed(hideTopToastRunnable, 1500L)
-    }
-
-    private fun showAnchoredSnackbarFormatted(message: String) {
-        val toast = findViewById<TextView>(R.id.topToast)
-        toast.removeCallbacks(hideTopToastRunnable)
-        toast.text = message
-        toast.alpha = 0f
-        toast.visibility = android.view.View.VISIBLE
-        toast.animate().alpha(1f).setDuration(180L).start()
-        toast.postDelayed(hideTopToastRunnable, 1500L)
-    }
 
     companion object {
         const val EXTRA_SOURCE_URI = "source_uri"
@@ -305,9 +240,6 @@ class MosaicActivity : AppCompatActivity() {
 
         private const val PREFS_NAME = "mosaic_presets"
 
-        /**
-         * 領域配列を flat IntArray (x, y, w, h, x, y, w, h, ...) にパック。
-         */
         fun packRegions(regions: List<Rect>): IntArray {
             val arr = IntArray(regions.size * 4)
             regions.forEachIndexed { i, r ->

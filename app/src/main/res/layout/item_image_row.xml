@@ -1,93 +1,138 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="2dp"
     android:layout_marginVertical="4dp"
-    android:background="@drawable/bg_image_row"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="5dp">
-
-    <ImageView
-        android:id="@+id/itemThumbnail"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:background="?attr/colorSurfaceContainer"
-        android:contentDescription="@string/result_image_description"
-        android:scaleType="centerCrop" />
+    android:background="@drawable/bg_image_row">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="48dp"
+        android:paddingVertical="5dp">
 
-        <TextView
-            android:id="@+id/itemFileName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="middle"
-            android:singleLine="true"
-            android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <ImageView
+            android:id="@+id/itemThumbnail"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:background="?attr/colorSurfaceContainer"
+            android:contentDescription="@string/result_image_description"
+            android:scaleType="centerCrop" />
 
-        <TextView
-            android:id="@+id/itemResolution"
-            android:layout_width="match_parent"
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/itemFileSize"
-            android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/itemFileName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="middle"
+                android:singleLine="true"
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+            <TextView
+                android:id="@+id/itemResolution"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodySmall" />
+
+            <TextView
+                android:id="@+id/itemFileSize"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceBodySmall" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
+            android:layout_marginStart="8dp"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/itemCrop"
+                    style="@style/Widget.Material3.Button.IconButton.Outlined"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/action_crop"
+                    app:icon="@drawable/ic_expand_content" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/itemMosaic"
+                    style="@style/Widget.Material3.Button.IconButton.Outlined"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:contentDescription="@string/action_mosaic"
+                    app:icon="@drawable/ic_mosaic" />
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/itemRemove"
+                style="@style/Widget.Material3.Button.IconButton.Outlined"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:contentDescription="@string/action_remove"
+                app:icon="@drawable/ic_close" />
+        </LinearLayout>
     </LinearLayout>
 
-    <GridLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:columnCount="2"
-        android:rowCount="2">
+    <LinearLayout
+        android:layout_width="40dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="@drawable/bg_move_capsule"
+        android:clipToOutline="true"
+        android:orientation="vertical">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/itemMoveUp"
-            style="@style/Widget.Material3.Button.IconButton.Outlined"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
             android:contentDescription="@string/action_move_up"
             app:icon="@drawable/ic_arrow_upward" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/itemCrop"
-            style="@style/Widget.Material3.Button.IconButton.Outlined"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:contentDescription="@string/action_crop"
-            app:icon="@drawable/ic_expand_content" />
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorOutline" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/itemMoveDown"
-            style="@style/Widget.Material3.Button.IconButton.Outlined"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
             android:contentDescription="@string/action_move_down"
             app:icon="@drawable/ic_arrow_downward" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/itemRemove"
-            style="@style/Widget.Material3.Button.IconButton.Outlined"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_marginTop="4dp"
-            android:contentDescription="@string/action_remove"
-            app:icon="@drawable/ic_close" />
-    </GridLayout>
-</LinearLayout>
+    </LinearLayout>
+</FrameLayout>

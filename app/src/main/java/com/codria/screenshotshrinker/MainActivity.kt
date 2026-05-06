@@ -1,6 +1,7 @@
 package com.codria.screenshotshrinker
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
@@ -13,16 +14,20 @@ import android.provider.OpenableColumns
 import android.util.Size
 import android.util.TypedValue
 import android.view.LayoutInflater
+import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
+import com.codria.screenshotshrinker.util.TopToast
+import com.codria.screenshotshrinker.util.toFileSizeString
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.codria.screenshotshrinker.util.LongClickHelper
+import com.codria.screenshotshrinker.util.PresetSlotManager
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,6 +51,21 @@ class MainActivity : AppCompatActivity() {
     private var isAnimatingSwap: Boolean = false
     private var pendingCropIndex: Int = -1
     private var pendingMosaicIndex: Int = -1
+
+    private lateinit var buttonSavePreset: MaterialButton
+    private lateinit var slotButtons: List<MaterialButton>
+    private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    private val presetSlotManager: PresetSlotManager by lazy {
+        PresetSlotManager(
+            saveButton = buttonSavePreset,
+            slotButtons = slotButtons,
+            topToast = topToast,
+            isSlotFilled = { slot -> prefs.contains(keyPresetCount(slot)) },
+            onSaveToSlot = { slot -> savePresetTo(slot) },
+            onLoadFromSlot = { slot -> loadPresetFrom(slot) },
+            onClearSlot = { slot -> clearPresetSlot(slot) },
+        )
+    }
 
     private val pickImages = registerForActivityResult(
         ActivityResultContracts.GetMultipleContents(),
@@ -106,6 +126,15 @@ class MainActivity : AppCompatActivity() {
             handleShareIntent(intent)
         }
 
+        buttonSavePreset = findViewById(R.id.buttonSavePreset)
+        slotButtons = listOf(
+            findViewById(R.id.buttonSlot1),
+            findViewById(R.id.buttonSlot2),
+            findViewById(R.id.buttonSlot3),
+        )
+        presetSlotManager.attachListeners()
+        presetSlotManager.refreshIcons()
+
         findViewById<MaterialButton>(R.id.buttonPickImage).setOnClickListener {
             pickImages.launch("image/*")
         }
@@ -124,6 +153,7 @@ class MainActivity : AppCompatActivity() {
 
         renderList()
         updateNextButton()
+        updateEmptyState()
     }
 
     private fun packCropRects(): IntArray {
@@ -268,6 +298,13 @@ class MainActivity : AppCompatActivity() {
         thumbCache.clear()
     }
 
+    private fun updateEmptyState() {
+        findViewById<View>(R.id.emptyState).visibility =
+            if (items.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private val topToast: TopToast by lazy { TopToast(findViewById(R.id.topToast)) }
+
     private fun renderList() {
         val container = findViewById<LinearLayout>(R.id.imageList)
         container.removeAllViews()
@@ -282,7 +319,7 @@ class MainActivity : AppCompatActivity() {
 
             val (name, size) = queryNameAndSize(uri)
             nameView.text = name
-            sizeView.text = formatFileSize(size)
+            sizeView.text = size.toFileSizeString()
 
             val cachedDims = dimensionsCache[uri]
             val cropSuffix = item.cropRect?.let { "  (${it.width()}×${it.height()})" }.orEmpty()
@@ -341,6 +378,7 @@ class MainActivity : AppCompatActivity() {
                     if (item.cropRect != null) {
                         items[index] = items[index].copy(cropRect = null)
                         renderList()
+                        topToast.show(getString(R.string.toast_crop_cleared))
                     }
                 },
             )
@@ -367,11 +405,13 @@ class MainActivity : AppCompatActivity() {
                     if (item.mosaicRegions.isNotEmpty()) {
                         items[index] = items[index].copy(mosaicRegions = emptyList())
                         renderList()
+                        topToast.show(getString(R.string.toast_mosaic_cleared))
                     }
                 },
             )
             container.addView(row)
         }
+        updateEmptyState()
     }
 
     /**
@@ -509,20 +549,96 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateNextButton() {
-        findViewById<MaterialButton>(R.id.buttonNext).isEnabled = items.isNotEmpty()
+        val hasItems = items.isNotEmpty()
+        findViewById<MaterialButton>(R.id.buttonNext).isEnabled = hasItems
+        buttonSavePreset.isEnabled = hasItems
     }
 
-    private fun formatFileSize(bytes: Long): String = when {
-        bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
-        bytes >= 1_000 -> "%.1f KB".format(bytes / 1_000.0)
-        bytes > 0 -> "$bytes B"
-        else -> ""
+    private fun savePresetTo(slot: Int) {
+        if (items.isEmpty()) return
+        val editor = prefs.edit()
+        val oldCount = prefs.getInt(keyPresetCount(slot), 0)
+        for (i in 0 until oldCount) {
+            editor.remove(keyPresetItemCrop(slot, i))
+            editor.remove(keyPresetItemMosaic(slot, i))
+            editor.remove(keyPresetItemCell(slot, i))
+        }
+        editor.putInt(keyPresetCount(slot), items.size)
+        items.forEachIndexed { i, item ->
+            val crop = item.cropRect
+            if (crop != null) {
+                editor.putString(keyPresetItemCrop(slot, i), "${crop.left},${crop.top},${crop.width()},${crop.height()}")
+            }
+            editor.putString(
+                keyPresetItemMosaic(slot, i),
+                item.mosaicRegions.joinToString("|") { "${it.left},${it.top},${it.width()},${it.height()}" },
+            )
+            editor.putInt(keyPresetItemCell(slot, i), item.mosaicCellPx)
+        }
+        editor.apply()
+        presetSlotManager.refreshIcons()
+        topToast.show(R.string.snackbar_preset_saved)
     }
+
+    private fun loadPresetFrom(slot: Int) {
+        if (!prefs.contains(keyPresetCount(slot))) {
+            topToast.show(R.string.snackbar_preset_empty)
+            return
+        }
+        val count = prefs.getInt(keyPresetCount(slot), 0)
+        items.forEachIndexed { i, _ ->
+            if (i >= count) return@forEachIndexed
+            val cropRect = prefs.getString(keyPresetItemCrop(slot, i), null)?.let { decodeCropRect(it) }
+            val cellPx = prefs.getInt(keyPresetItemCell(slot, i), MosaicActivity.DEFAULT_CELL_PX)
+            val mosaicRegions = decodeMosaicRegions(prefs.getString(keyPresetItemMosaic(slot, i), "") ?: "")
+            items[i] = items[i].copy(
+                cropRect = cropRect,
+                mosaicRegions = mosaicRegions,
+                mosaicCellPx = cellPx,
+            )
+        }
+        renderList()
+    }
+
+    private fun clearPresetSlot(slot: Int) {
+        if (!prefs.contains(keyPresetCount(slot))) return
+        val count = prefs.getInt(keyPresetCount(slot), 0)
+        val editor = prefs.edit()
+        for (i in 0 until count) {
+            editor.remove(keyPresetItemCrop(slot, i))
+            editor.remove(keyPresetItemMosaic(slot, i))
+            editor.remove(keyPresetItemCell(slot, i))
+        }
+        editor.remove(keyPresetCount(slot))
+        editor.apply()
+        presetSlotManager.refreshIcons()
+        topToast.show(getString(R.string.snackbar_preset_cleared, slot))
+    }
+
+    private fun decodeCropRect(s: String): Rect? {
+        val n = s.split(",").mapNotNull { it.toIntOrNull() }
+        if (n.size < 4 || n[2] <= 0 || n[3] <= 0) return null
+        return Rect(n[0], n[1], n[0] + n[2], n[1] + n[3])
+    }
+
+    private fun decodeMosaicRegions(s: String): List<Rect> {
+        if (s.isBlank()) return emptyList()
+        return s.split("|").mapNotNull { part ->
+            val n = part.split(",").mapNotNull { it.toIntOrNull() }
+            if (n.size >= 4 && n[2] > 0 && n[3] > 0) Rect(n[0], n[1], n[0] + n[2], n[1] + n[3]) else null
+        }
+    }
+
+    private fun keyPresetCount(slot: Int) = "main_preset_${slot}_count"
+    private fun keyPresetItemCrop(slot: Int, i: Int) = "main_preset_${slot}_item_${i}_crop"
+    private fun keyPresetItemMosaic(slot: Int, i: Int) = "main_preset_${slot}_item_${i}_mosaic"
+    private fun keyPresetItemCell(slot: Int, i: Int) = "main_preset_${slot}_item_${i}_cell"
 
     companion object {
         private const val STATE_URIS = "uris"
         private const val STATE_CROPS = "crops"
         private const val STATE_MOSAIC_DATA = "mosaic_data"
         private const val SWAP_DURATION_MS = 220L
+        private const val PREFS_NAME = "main_presets"
     }
 }
