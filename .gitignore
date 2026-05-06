@@ -32,3 +32,7 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Internal docs
+HANDOVER.md
+SPECIFICATION.md
