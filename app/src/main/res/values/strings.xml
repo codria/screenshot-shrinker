@@ -8,7 +8,38 @@
     <string name="action_move_down">下へ</string>
     <string name="action_remove">削除</string>
     <string name="action_crop">切り取り</string>
+    <string name="action_mosaic">モザイク</string>
     <string name="action_back_screen">戻る</string>
+    <string name="action_add_region">領域追加</string>
+    <string name="action_delete_selected">選択削除</string>
+    <string name="action_delete_all">全削除</string>
+    <string name="mosaic_count_info">モザイク領域: %d件</string>
+    <string name="action_cell_finer">モザイクを細かく</string>
+    <string name="action_cell_coarser">モザイクを粗く</string>
+    <string name="action_cancel">キャンセル</string>
+    <string name="action_ok">OK</string>
+    <string name="action_reset">クロップ解除</string>
+
+    <string name="aspect_free">自由</string>
+    <string name="aspect_1_1">1:1</string>
+    <string name="aspect_4_3">4:3</string>
+    <string name="aspect_16_9">16:9</string>
+    <string name="aspect_9_16">9:16</string>
+    <string name="aspect_reset">リセット</string>
+    <string name="snackbar_crop_reset">クロップ領域をリセットしました</string>
+
+    <string name="crop_size_info">%1$d×%2$dpx → %3$d×%4$dpx</string>
+    <string name="action_undo">元に戻す</string>
+    <string name="action_redo">やり直す</string>
+    <string name="action_save_preset">領域保存</string>
+    <string name="action_save_preset_active">保存先？</string>
+    <string name="action_slot_1">領域1</string>
+    <string name="action_slot_2">領域2</string>
+    <string name="action_slot_3">領域3</string>
+    <string name="snackbar_preset_saved">領域を保存しました</string>
+    <string name="snackbar_preset_empty">保存された領域がありません</string>
+    <string name="snackbar_pick_save_slot">保存先を選んでください</string>
+    <string name="snackbar_preset_cleared">領域%dを削除しました</string>
 
     <string name="label_concat_direction">連結方向</string>
     <string name="direction_vertical">縦</string>
@@ -16,7 +47,13 @@
     <string name="action_open_in_gallery">ギャラリーで開く</string>
     <string name="action_share">共有</string>
     <string name="action_back">戻る</string>
+    <string name="action_discard">取り消し</string>
+    <string name="action_delete">削除</string>
     <string name="action_start_over">最初から</string>
+    <string name="dialog_discard_title">画像を削除しますか？</string>
+    <string name="dialog_discard_message">保存した画像「%1$s」を端末から削除します。元に戻せません。</string>
+    <string name="snackbar_discard_failed">画像の削除に失敗しました</string>
+    <string name="snackbar_discard_unverified">対象画像を確認できないため削除を中止しました</string>
     <string name="result_image_description">保存した画像のプレビュー</string>
     <string name="error_no_handler">対応するアプリが見つかりませんでした</string>
     <string name="snackbar_crop_not_implemented">切り取り機能は未実装です（Phase 6で対応予定）</string>

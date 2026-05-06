@@ -7,9 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.view.MotionEvent
 import android.view.View
-import android.view.inputmethod.InputMethodManager
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.ImageView
@@ -20,17 +18,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
 import com.codria.screenshotshrinker.util.ImageConcatenator
 import com.codria.screenshotshrinker.util.ImageLoader
+import com.codria.screenshotshrinker.util.ImageMosaicker
 import com.codria.screenshotshrinker.util.ImageResizer
 import com.codria.screenshotshrinker.util.ImageSaver
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
 import com.google.android.material.snackbar.Snackbar
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -51,6 +47,9 @@ class SettingsActivity : AppCompatActivity() {
     )
 
     private lateinit var sourceUris: List<Uri>
+    private var cropRects: List<Rect?> = emptyList()
+    private var mosaicRegionsList: List<List<Rect>> = emptyList()
+    private var mosaicCellPxList: List<Int> = emptyList()
     private var loadedBitmaps: List<Bitmap>? = null
     private var previewBitmap: Bitmap? = null
     private var totalSourceBytes: Long = 0L
@@ -62,13 +61,14 @@ class SettingsActivity : AppCompatActivity() {
     private var presetItems: List<PresetData> = emptyList()
     private var selectedPreset: PresetData? = null
     private var customSelected: Boolean = false
+    private var pendingRestoreResizePct: Int? = null
 
     private lateinit var concatRow: LinearLayout
     private lateinit var directionRadioGroup: RadioGroup
     private lateinit var previewImage: ImageView
+    private lateinit var resizeLabelText: TextView
     private lateinit var resizeDropdown: AutoCompleteTextView
-    private lateinit var customInputLayout: TextInputLayout
-    private lateinit var customInput: TextInputEditText
+    private lateinit var customSlider: Slider
     private lateinit var customResolutionText: TextView
     private lateinit var qualityLabelText: TextView
     private lateinit var qualitySlider: Slider
@@ -100,12 +100,29 @@ class SettingsActivity : AppCompatActivity() {
         }
         sourceUris = incomingUris.toList()
 
+        val cropArr: IntArray? = intent.getIntArrayExtra(EXTRA_CROP_RECTS)
+        cropRects = sourceUris.mapIndexed { i, _ ->
+            if (cropArr != null && cropArr.size >= (i + 1) * 4 && cropArr[i * 4] >= 0) {
+                Rect(
+                    cropArr[i * 4],
+                    cropArr[i * 4 + 1],
+                    cropArr[i * 4] + cropArr[i * 4 + 2],
+                    cropArr[i * 4 + 1] + cropArr[i * 4 + 3],
+                )
+            } else null
+        }
+
+        val mosaicArr: IntArray? = intent.getIntArrayExtra(EXTRA_MOSAIC_DATA)
+        val (regionsList, cellPxList) = unpackMosaicData(mosaicArr, sourceUris.size)
+        mosaicRegionsList = regionsList
+        mosaicCellPxList = cellPxList
+
         concatRow = findViewById(R.id.concatRow)
         directionRadioGroup = findViewById(R.id.directionRadioGroup)
         previewImage = findViewById(R.id.previewImage)
+        resizeLabelText = findViewById(R.id.resizeLabelText)
         resizeDropdown = findViewById(R.id.resizeDropdown)
-        customInputLayout = findViewById(R.id.customInputLayout)
-        customInput = findViewById(R.id.customInput)
+        customSlider = findViewById(R.id.customSlider)
         customResolutionText = findViewById(R.id.customResolutionText)
         qualityLabelText = findViewById(R.id.qualityLabelText)
         qualitySlider = findViewById(R.id.qualitySlider)
@@ -114,6 +131,24 @@ class SettingsActivity : AppCompatActivity() {
         backButton = findViewById(R.id.buttonBackToMain)
 
         concatRow.visibility = if (sourceUris.size >= 2) View.VISIBLE else View.GONE
+
+        // 永続化された前回設定を復元 (リスナー設定前に値だけ流し込む)
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val savedQuality = prefs.getInt(KEY_QUALITY, 80).coerceIn(1, 100)
+        val savedDirection = prefs.getString(KEY_DIRECTION, DIRECTION_VERTICAL) ?: DIRECTION_VERTICAL
+        val savedResizePct = prefs.getInt(KEY_RESIZE_PERCENT, 100).coerceIn(1, 100)
+        customSelected = prefs.getBoolean(KEY_RESIZE_CUSTOM, false)
+        pendingRestoreResizePct = savedResizePct
+
+        qualitySlider.value = savedQuality.toFloat()
+        qualityValueText.text = "${savedQuality}%"
+        customSlider.value = savedResizePct.toFloat()
+
+        if (savedDirection == DIRECTION_HORIZONTAL) {
+            directionRadioGroup.check(R.id.directionHorizontal)
+        } else {
+            directionRadioGroup.check(R.id.directionVertical)
+        }
 
         directionRadioGroup.setOnCheckedChangeListener { _, _ ->
             recomputeOutputDimsAndRender()
@@ -126,31 +161,32 @@ class SettingsActivity : AppCompatActivity() {
             scheduleEstimate()
         }
 
-        customInput.addTextChangedListener {
-            customInputLayout.error = null
+        customSlider.addOnChangeListener { _, _, fromUser ->
             updateCustomResolutionText()
-            if (!customSelected) {
+            if (fromUser && !customSelected) {
                 customSelected = true
                 selectedPreset = null
                 resizeDropdown.setText(getString(R.string.resize_custom), false)
             }
-            scheduleEstimate()
+            updateResizeLabel()
+            if (fromUser) scheduleEstimate()
         }
 
         resizeDropdown.setOnItemClickListener { _, _, position, _ ->
             if (position < presetItems.size) {
-                selectedPreset = presetItems[position]
+                val preset = presetItems[position]
+                selectedPreset = preset
                 customSelected = false
-                customInputLayout.error = null
+                customSlider.value = preset.percent.toFloat().coerceIn(
+                    customSlider.valueFrom,
+                    customSlider.valueTo,
+                )
             } else {
                 // 「カスタム」項目選択
                 selectedPreset = null
                 customSelected = true
-                // フォーカスとIMEを起動して入力を促す
-                customInput.requestFocus()
-                getSystemService(InputMethodManager::class.java)
-                    ?.showSoftInput(customInput, InputMethodManager.SHOW_IMPLICIT)
             }
+            updateResizeLabel()
             scheduleEstimate()
         }
 
@@ -169,26 +205,21 @@ class SettingsActivity : AppCompatActivity() {
         loadedBitmaps = null
     }
 
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.action == MotionEvent.ACTION_DOWN && customInput.hasFocus()) {
-            val rect = Rect()
-            customInputLayout.getGlobalVisibleRect(rect)
-            if (!rect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
-                customInput.clearFocus()
-                getSystemService(InputMethodManager::class.java)
-                    ?.hideSoftInputFromWindow(customInput.windowToken, 0)
-            }
-        }
-        return super.dispatchTouchEvent(ev)
-    }
-
     private fun loadBitmapsAndSetup() {
         updateQualityLabel(getString(R.string.estimate_loading))
         lifecycleScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     val totalBytes = sourceUris.sumOf { queryFileSize(it) }
-                    val bitmaps = sourceUris.map { ImageLoader.loadBitmap(this@SettingsActivity, it) }
+                    val bitmaps = sourceUris.mapIndexed { idx, uri ->
+                        val full = ImageLoader.loadBitmap(this@SettingsActivity, uri)
+                        val mosaiced = applyMosaicIfAny(
+                        full,
+                        mosaicRegionsList.getOrNull(idx).orEmpty(),
+                        mosaicCellPxList.getOrElse(idx) { MosaicActivity.DEFAULT_CELL_PX },
+                    )
+                        applyCropIfAny(mosaiced, cropRects.getOrNull(idx))
+                    }
                     bitmaps to totalBytes
                 }
             }
@@ -208,6 +239,76 @@ class SettingsActivity : AppCompatActivity() {
                 finish()
             }
         }
+    }
+
+    /**
+     * 与えられたBitmapに対して、指定されたモザイク領域があれば適用した新Bitmapを返す。
+     * regionが空なら元Bitmapをそのまま返す。元Bitmapが置き換わる場合は recycle する。
+     */
+    private fun applyMosaicIfAny(full: Bitmap, regions: List<Rect>, cellPx: Int = MosaicActivity.DEFAULT_CELL_PX): Bitmap {
+        if (regions.isEmpty()) return full
+        val out = ImageMosaicker.applyMosaic(full, regions, cellPx)
+        if (out !== full) full.recycle()
+        return out
+    }
+
+    /**
+     * flat IntArray (cellPx_0, count_0, x, y, w, h, ..., cellPx_1, count_1, ...) を
+     * Pair<List<List<Rect>>, List<Int>> にデコード。
+     */
+    private fun unpackMosaicData(arr: IntArray?, expectedItems: Int): Pair<List<List<Rect>>, List<Int>> {
+        val defaultCellPx = MosaicActivity.DEFAULT_CELL_PX
+        if (arr == null) {
+            return List(expectedItems) { emptyList<Rect>() } to List(expectedItems) { defaultCellPx }
+        }
+        val regions = mutableListOf<List<Rect>>()
+        val cellPxList = mutableListOf<Int>()
+        var pos = 0
+        repeat(expectedItems) {
+            if (pos >= arr.size) {
+                regions.add(emptyList())
+                cellPxList.add(defaultCellPx)
+                return@repeat
+            }
+            val cellPx = arr[pos++]
+            cellPxList.add(cellPx)
+            if (pos >= arr.size) {
+                regions.add(emptyList())
+                return@repeat
+            }
+            val count = arr[pos++]
+            val regionList = mutableListOf<Rect>()
+            repeat(count) {
+                if (pos + 3 >= arr.size) return@repeat
+                val x = arr[pos]; val y = arr[pos + 1]; val w = arr[pos + 2]; val h = arr[pos + 3]
+                if (w > 0 && h > 0) regionList.add(Rect(x, y, x + w, y + h))
+                pos += 4
+            }
+            regions.add(regionList)
+        }
+        return regions to cellPxList
+    }
+
+    /**
+     * 与えられたBitmapに crop が指定されていればその領域を切り出した新Bitmapを返す。
+     * 元Bitmapは createBitmap が新オブジェクトを返した場合のみ recycle する。
+     * crop が画像範囲外を指している場合は安全な範囲にクランプ。
+     */
+    private fun applyCropIfAny(full: Bitmap, crop: Rect?): Bitmap {
+        if (crop == null) return full
+        val safe = Rect(
+            crop.left.coerceIn(0, full.width),
+            crop.top.coerceIn(0, full.height),
+            crop.right.coerceIn(0, full.width),
+            crop.bottom.coerceIn(0, full.height),
+        )
+        if (safe.width() <= 0 || safe.height() <= 0) return full
+        if (safe.left == 0 && safe.top == 0 && safe.width() == full.width && safe.height() == full.height) {
+            return full
+        }
+        val cropped = Bitmap.createBitmap(full, safe.left, safe.top, safe.width(), safe.height())
+        if (cropped !== full) full.recycle()
+        return cropped
     }
 
     private fun queryFileSize(uri: Uri): Long {
@@ -252,6 +353,7 @@ class SettingsActivity : AppCompatActivity() {
         rebuildPresetList()
         renderResizeDropdown()
         updateCustomResolutionText()
+        updateResizeLabel()
     }
 
     private fun rebuildPresetList() {
@@ -295,9 +397,20 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
             else -> {
-                val first = presetItems.firstOrNull()
+                val target = pendingRestoreResizePct
+                pendingRestoreResizePct = null
+                val match = if (target != null) {
+                    presetItems.firstOrNull { !it.isFixedWidth && it.percent == target }
+                } else null
+                val first = match ?: presetItems.firstOrNull()
                 selectedPreset = first
-                if (first != null) resizeDropdown.setText(formatPresetLabel(first), false)
+                if (first != null) {
+                    resizeDropdown.setText(formatPresetLabel(first), false)
+                    customSlider.value = first.percent.toFloat().coerceIn(
+                        customSlider.valueFrom,
+                        customSlider.valueTo,
+                    )
+                }
             }
         }
     }
@@ -306,14 +419,32 @@ class SettingsActivity : AppCompatActivity() {
         "${p.percent}% (${p.targetW}×${p.resultH}px)"
 
     private fun updateCustomResolutionText() {
-        val pct = customInput.text?.toString()?.trim()?.toIntOrNull()
-        if (pct == null || pct !in 1..100 || outputW == 0) {
+        if (outputW == 0) {
             customResolutionText.text = ""
             return
         }
-        val w = (outputW * pct / 100).coerceAtLeast(1)
-        val h = (outputH * pct / 100).coerceAtLeast(1)
-        customResolutionText.text = "${w}×${h}px"
+        val pct = customSlider.value.toInt().coerceIn(1, 100)
+        customResolutionText.text = "${pct}%"
+    }
+
+    private fun updateResizeLabel() {
+        val base = getString(R.string.label_resize)
+        if (outputW == 0 || outputH == 0) {
+            resizeLabelText.text = base
+            return
+        }
+        val (newW, newH) = when {
+            customSelected -> {
+                val pct = customSlider.value.toInt().coerceIn(1, 100)
+                (outputW * pct / 100).coerceAtLeast(1) to (outputH * pct / 100).coerceAtLeast(1)
+            }
+            selectedPreset != null -> selectedPreset!!.targetW to selectedPreset!!.resultH
+            else -> {
+                resizeLabelText.text = base
+                return
+            }
+        }
+        resizeLabelText.text = "$base (${newW}×${newH}px)"
     }
 
     private fun updatePreview() {
@@ -402,6 +533,7 @@ class SettingsActivity : AppCompatActivity() {
         val direction = currentDirection()
         val isMulti = sources.size >= 2
 
+        persistSettings()
         saveButton.isEnabled = false
 
         lifecycleScope.launch {
@@ -448,13 +580,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun resolveTargetWidth(): Int? {
         if (customSelected) {
-            val text = customInput.text?.toString()?.trim().orEmpty()
-            val pct = text.toIntOrNull()
-            if (pct == null || pct !in 1..100) {
-                customInputLayout.error = getString(R.string.error_invalid_size)
-                return null
-            }
-            customInputLayout.error = null
+            val pct = customSlider.value.toInt().coerceIn(1, 100)
             return (outputW * pct / 100).coerceAtLeast(1)
         }
         val preset = selectedPreset
@@ -471,12 +597,29 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun resolveTargetWidthQuiet(): Int? {
         if (customSelected) {
-            val text = customInput.text?.toString()?.trim().orEmpty()
-            val pct = text.toIntOrNull()
-            if (pct == null || pct !in 1..100) return null
+            val pct = customSlider.value.toInt().coerceIn(1, 100)
             return (outputW * pct / 100).coerceAtLeast(1)
         }
         return selectedPreset?.targetW
+    }
+
+    private fun persistSettings() {
+        val pct = if (customSelected) {
+            customSlider.value.toInt().coerceIn(1, 100)
+        } else {
+            selectedPreset?.percent ?: 100
+        }
+        val direction = if (currentDirection() == ImageConcatenator.Direction.HORIZONTAL) {
+            DIRECTION_HORIZONTAL
+        } else {
+            DIRECTION_VERTICAL
+        }
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+            .putInt(KEY_QUALITY, qualitySlider.value.toInt())
+            .putString(KEY_DIRECTION, direction)
+            .putInt(KEY_RESIZE_PERCENT, pct)
+            .putBoolean(KEY_RESIZE_CUSTOM, customSelected)
+            .apply()
     }
 
     private fun formatFileSize(bytes: Long): String = when {
@@ -487,9 +630,19 @@ class SettingsActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_IMAGE_URIS = "image_uris"
+        const val EXTRA_CROP_RECTS = "crop_rects"
+        const val EXTRA_MOSAIC_DATA = "mosaic_data"
         private const val DEBOUNCE_MS = 300L
 
         private val PERCENT_PRESETS = listOf(100, 50, 40, 30, 20)
         private val FIXED_WIDTHS = listOf(1080, 768)
+
+        private const val PREFS_NAME = "settings_prefs"
+        private const val KEY_QUALITY = "quality"
+        private const val KEY_DIRECTION = "direction"
+        private const val KEY_RESIZE_PERCENT = "resize_percent"
+        private const val KEY_RESIZE_CUSTOM = "resize_custom"
+        private const val DIRECTION_VERTICAL = "VERTICAL"
+        private const val DIRECTION_HORIZONTAL = "HORIZONTAL"
     }
 }
